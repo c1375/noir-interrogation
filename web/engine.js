@@ -18,17 +18,29 @@ const POOLS_EN = {
     { name: "Dr. Wendell Hale",      title: "society physician" },
     { name: "Mr. August Pell",       title: "racetrack tycoon" },
   ],
-  names: [
-    "Vivian Cross", "Jack 'Knuckles' Malone", "Dr. Eliza Vance",
-    "Tony 'the Pen' Russo", "Margot Sinclair", "Felix Crane",
-    "Sister Agnes Holloway", "Reggie 'Lucky' Park", "Delia Whitlock",
-    "Captain Nico Bellamy", "Honoria Quinn", "Solomon Drake",
-  ],
-  occupations: [
-    "nightclub singer", "pawn shop owner", "society doctor",
-    "accountant for the mob", "investigative journalist", "lawyer",
-    "professional gambler", "society heiress", "war veteran turned PI",
-    "fortune teller", "longshoreman", "former silent film actress",
+  // Suspects are PRE-PAIRED so a name like "Dr. Eliza Vance" never gets assigned
+  // to "longshoreman". Each game samples N of these pairs.
+  suspects: [
+    { name: "Vivian Cross",            occupation: "nightclub singer" },
+    { name: "Dr. Eliza Vance",         occupation: "society doctor" },
+    { name: "Tony 'the Pen' Russo",    occupation: "accountant for the mob" },
+    { name: "Captain Nico Bellamy",    occupation: "war veteran turned PI" },
+    { name: "Sister Agnes Holloway",   occupation: "fortune teller" },
+    { name: "Solomon Drake",           occupation: "lawyer" },
+    { name: "Margot Sinclair",         occupation: "investigative journalist" },
+    { name: "Honoria Quinn",           occupation: "society heiress" },
+    { name: "Reggie 'Lucky' Park",     occupation: "professional gambler" },
+    { name: "Jack 'Knuckles' Malone",  occupation: "longshoreman" },
+    { name: "Delia Whitlock",          occupation: "former silent film actress" },
+    { name: "Felix Crane",             occupation: "pawn shop owner" },
+    { name: "Eddie 'the Mick' Donovan",occupation: "speakeasy bartender" },
+    { name: "Hank 'Iron Jaw' Brennan", occupation: "retired prizefighter" },
+    { name: "Trudy Beck",              occupation: "night-shift cab driver" },
+    { name: "The Great Mortimer",      occupation: "stage magician" },
+    { name: "Ezra Pendleton",          occupation: "mortician" },
+    { name: "Lila 'Diamond' Vega",     occupation: "fence" },
+    { name: "Kit Granger",             occupation: "society photographer" },
+    { name: "Henry Quill",             occupation: "insurance investigator" },
   ],
   weapons: [
     "snub-nosed revolver", "ice pick", "lead-tipped blackjack",
@@ -79,6 +91,14 @@ const POOLS_EN = {
     "fortune teller":           "cryptic -- talks in omens, deflects with portents",
     "longshoreman":             "hostile, suspicious of authority, swears casually",
     "former silent film actress": "theatrical, melodramatic, treats every question as a scene",
+    "speakeasy bartender":      "polishes a glass while watching, knows everyone's drink and everyone's secret",
+    "retired prizefighter":     "low rumble, slow words, knuckles speak louder than vowels",
+    "night-shift cab driver":   "fast-talker, sees the city after midnight, every fare a story",
+    "stage magician":           "theatrical flourish, every sentence is misdirection",
+    "mortician":                "soft-spoken, comfortable with silence, treats questions like measurements",
+    "fence":                    "low, careful, name-drops nothing, prices everything",
+    "society photographer":     "flashbulb-bright cheer hiding cynic eyes",
+    "insurance investigator":   "skeptical pencil-pusher with a nose for fraud",
   },
 };
 
@@ -93,14 +113,28 @@ const POOLS_ZH = {
     { name: "石伯安",     title: "济世医院院长" },
     { name: "苏永盛",     title: "跑马场老板" },
   ],
-  names: [
-    "红玫", "韩三爷", "李白驹医生", "钱师爷", "唐慧君", "阿九",
-    "静安姑姑", "杜小六", "陶宜君", "关云鹤", "姚月笙", "严雪松",
-  ],
-  occupations: [
-    "百乐门舞女", "当铺老板", "济世名医", "帮派账房", "申报记者",
-    "法租界律师", "跑马场赌客", "上海名媛", "退伍宪兵转私家侦探",
-    "茶楼算命先生", "码头脚行", "默片影后",
+  // 名字与职业绑定，避免「李白驹医生 → 茶楼算命先生」这样的笑话配对
+  suspects: [
+    { name: "红玫",       occupation: "百乐门舞女" },
+    { name: "李白驹医生", occupation: "济世名医" },
+    { name: "韩三爷",     occupation: "帮派账房" },
+    { name: "钱师爷",     occupation: "法租界律师" },
+    { name: "静安姑姑",   occupation: "茶楼算命先生" },
+    { name: "关云鹤",     occupation: "退伍宪兵转私家侦探" },
+    { name: "唐慧君",     occupation: "上海名媛" },
+    { name: "杜小六",     occupation: "跑马场赌客" },
+    { name: "阿九",       occupation: "码头脚行" },
+    { name: "严雪松",     occupation: "申报记者" },
+    { name: "陶宜君",     occupation: "默片影后" },
+    { name: "姚月笙",     occupation: "当铺老板" },
+    { name: "石阿全",     occupation: "百乐门吧台师傅" },
+    { name: "齐铁拳",     occupation: "拳馆教头" },
+    { name: "拐子贵",     occupation: "黄包车夫" },
+    { name: "鬼手刘",     occupation: "大世界戏法师" },
+    { name: "孙阴先生",   occupation: "义庄先生" },
+    { name: "雪花姐",     occupation: "黑市掮客" },
+    { name: "苏美君",     occupation: "画报摄影师" },
+    { name: "卢敬安",     occupation: "古董行掌柜" },
   ],
   weapons: [
     "短管左轮", "冰锥", "包铅警棍", "下了药的鸡尾酒",
@@ -149,6 +183,14 @@ const POOLS_ZH = {
     "茶楼算命先生":       "话头晦涩，开口就是天命星象，不正面回答",
     "码头脚行":           "凶巴巴，对当官的没好脸色，开口带粗话",
     "默片影后":           "戏剧化，一副在拍戏的样子，每句话都像台词",
+    "百乐门吧台师傅":     "话锋不慢，擦着杯子看人，谁来过他都记得",
+    "拳馆教头":           "嗓门低沉，话短，拳头说话",
+    "黄包车夫":           "口音掺杂，跑遍十里洋场，深夜里见过太多事",
+    "大世界戏法师":       "戏剧腔，每句话都像在卖关子",
+    "义庄先生":           "话不多，习惯沉默，对任何问题都冷静像在量尺寸",
+    "黑市掮客":           "言语圆滑，从不留名，什么都能买什么都能卖",
+    "画报摄影师":         "嘴上爽快，眼里冷，闪光灯下嗅得到丑闻",
+    "古董行掌柜":         "每件物事都讲得出渊源，话里有话",
   },
 };
 
@@ -277,6 +319,86 @@ const VOICE_EN = {
     ],
     leave: "[rising dramatically]  Curtain. Goodnight, detective.",
   },
+  "speakeasy bartender": {
+    open:  ["[wiping a glass]  ", "Look, friend, ", ""],
+    close: ["", " That's the long and short of it.", " Pour you another?"],
+    deflect: [
+      "I don't repeat what I hear at the bar. Bad for tips.",
+      "[keeps polishing the glass]  Couldn't say.",
+      "Folks come in, folks go out. I don't keep a ledger.",
+    ],
+    leave: "We're closing the bar, detective. On your way.",
+  },
+  "retired prizefighter": {
+    open:  ["", "[a slow rumble]  ", "Look, "],
+    close: ["", " That's it.", " Final round."],
+    deflect: [
+      "Took too many to the head to remember small things.",
+      "Some questions, you swing and you miss, see?",
+      "[cracks knuckles]  Pass.",
+    ],
+    leave: "Bell rang, detective. We're done.",
+  },
+  "night-shift cab driver": {
+    open:  ["Look, mac, ", "I'll tell ya, ", "[lighting a smoke]  "],
+    close: ["", " That's how I remember it.", " Meter's running, by the way."],
+    deflect: [
+      "I drive, I don't snitch. Bad business.",
+      "Buddy, I see a hundred faces a night.",
+      "[scratches chin]  Couldn't tell ya.",
+    ],
+    leave: "Got a fare waiting, detective. So long.",
+  },
+  "stage magician": {
+    open:  ["[a small flourish]  ", "Aha, detective! ", "Allow me to clarify -- "],
+    close: ["", " ... and that's the trick of it.", " A magician keeps his secrets."],
+    deflect: [
+      "Misdirection, detective -- a magician's first lesson.",
+      "[produces a coin from behind your ear]  Some things shouldn't be revealed.",
+      "Now you see it, now you don't.",
+    ],
+    leave: "[bows]  And with that... I vanish.",
+  },
+  "mortician": {
+    open:  ["", "Quietly: ", "If you'll permit me -- "],
+    close: ["", " That is all.", " Make of it what you will."],
+    deflect: [
+      "Discretion is the better part of my profession.",
+      "[soft]  I would rather not say.",
+      "Some details belong only to the deceased.",
+    ],
+    leave: "There is work waiting downstairs, detective. Good evening.",
+  },
+  "fence": {
+    open:  ["[low, careful]  ", "Look here, ", "I'll tell you what -- "],
+    close: ["", " That's the price.", " No questions, no answers."],
+    deflect: [
+      "I don't know names, detective. I never know names.",
+      "What you're asking after, I never saw it.",
+      "[shrug]  Couldn't tell you.",
+    ],
+    leave: "Place is closed, detective. Out.",
+  },
+  "society photographer": {
+    open:  ["[behind the camera]  ", "Sweetheart, ", "Detective, darling, "],
+    close: ["", " Snap snap, story over.", " Gimme a smile, would you?"],
+    deflect: [
+      "I shoot the picture, I don't write the caption.",
+      "[winks]  My film is private property.",
+      "Negatives are filed, detective. I don't show them.",
+    ],
+    leave: "Last shot, detective. *click* -- you're out.",
+  },
+  "insurance investigator": {
+    open:  ["For the record: ", "By my files, ", "Strictly speaking, "],
+    close: ["", " As noted in my report.", " I've cross-referenced this twice."],
+    deflect: [
+      "That's marked confidential in my files.",
+      "I'd need to consult the case folder before commenting.",
+      "Procedure forbids me from saying.",
+    ],
+    leave: "I have a deposition in the morning. Good day, detective.",
+  },
 };
 
 /* ============== ZH voice templates ============== */
@@ -402,6 +524,86 @@ const VOICE_ZH = {
     ],
     leave: "[戏剧化起身]  落幕。晚安，警官。",
   },
+  "百乐门吧台师傅": {
+    open:  ["[擦着酒杯]  ", "我跟侬讲，", ""],
+    close: ["", " 大致是这样。", " 来一杯吗？"],
+    deflect: [
+      "吧台后头听到的，我不外传，砸饭碗。",
+      "[继续擦杯子]  说不清。",
+      "客人来来去去，我不记账，记不住。",
+    ],
+    leave: "我们打烊了，警官。请便。",
+  },
+  "拳馆教头": {
+    open:  ["", "[低嗓]  ", "听着，"],
+    close: ["", " 完。", " 收工。"],
+    deflect: [
+      "脑子挨多了不记小事。",
+      "有些事一拳挥过去打空，懂？",
+      "[捏了捏指节]  跳过。",
+    ],
+    leave: "钟响了，警官。别再问。",
+  },
+  "黄包车夫": {
+    open:  ["阿哥啊，", "我跟侬讲，", "[抽了口烟]  "],
+    close: ["", " 大致就这样，先生。", " 一脚一脚跑出来的，记不全。"],
+    deflect: [
+      "我拉车的，不打小报告，断生意。",
+      "先生，一晚上多少张脸过去，谁记得清？",
+      "[摸了摸下巴]  说不上。",
+    ],
+    leave: "客人在等了，警官，先走一步。",
+  },
+  "大世界戏法师": {
+    open:  ["[手腕一翻]  ", "啊呀，警官！", "请允许我解释——"],
+    close: ["", " ……就是这么个戏法。", " 戏法人不漏底。"],
+    deflect: [
+      "障眼法，警官——戏法的第一课。",
+      "[从您耳朵后变出一枚铜钱]  有些事不可揭破。",
+      "您看见过，您又没看见过。",
+    ],
+    leave: "[一鞠躬]  那么……戏法人也得退场。",
+  },
+  "义庄先生": {
+    open:  ["", "轻声说：", "若蒙允许——"],
+    close: ["", " 仅此而已。", " 您自己揣度。"],
+    deflect: [
+      "我这一行，第一讲规矩。",
+      "[低声]  恕难奉告。",
+      "有些事只属于亡者。",
+    ],
+    leave: "下面还有事候着，警官，告辞。",
+  },
+  "黑市掮客": {
+    open:  ["[压低声音]  ", "我同侬讲，", "话搁这儿——"],
+    close: ["", " 价钱就这样。", " 有问无答，规矩。"],
+    deflect: [
+      "我不记名字，警官，从来不记。",
+      "您问的那个，我没见过。",
+      "[耸肩]  说不上。",
+    ],
+    leave: "店要打烊了，警官，请。",
+  },
+  "画报摄影师": {
+    open:  ["[相机后头]  ", "亲爱的警官，", "哎，警官，"],
+    close: ["", " 咔嚓一声，故事就完。", " 给我笑一个？"],
+    deflect: [
+      "我拍照片，配文不是我的事。",
+      "[眨眼]  底片是我私家财产。",
+      "胶卷归档了，警官，不外示。",
+    ],
+    leave: "最后一张，警官——咔嚓，您出画了。",
+  },
+  "古董行掌柜": {
+    open:  ["要说这个嘛——", "我老实跟您讲，", "古董行有古董行的规矩，"],
+    close: ["", " 每件物事都有它的故事。", " 您问到这儿便算到底。"],
+    deflect: [
+      "我经手的物事多，名字一概不留。",
+      "古玩这行，谁多嘴谁吃亏。",
+      "[摩挲着印章]  此事难言。",
+    ],
+    leave: "店里还有客在等掌眼，警官，告辞。",
+  },
 };
 
 const VOICE_BY_LANG = { en: VOICE_EN, zh: VOICE_ZH };
@@ -433,6 +635,14 @@ const KNEW_VICTIM_EN = {
   "fortune teller":            (v) => `${v.name} consulted the cards twice. Both times, the same warning.`,
   "longshoreman":              (v) => `Knew the name. Worked a job at his docks once. Tight-fisted bastard.`,
   "former silent film actress":(v) => `We were once... acquainted. In the days when names like ours meant something.`,
+  "speakeasy bartender":       (v) => `${v.name}? Came in once a week. Drank rye, neat. Big tipper, bigger silences.`,
+  "retired prizefighter":      (v) => `${v.name}? Saw him at a fight or two. Decent man at ringside. Bad bettor.`,
+  "night-shift cab driver":    (v) => `Drove ${v.name} home a couple times. Quiet rider, generous tipper. That's all I know.`,
+  "stage magician":            (v) => `${v.name} caught my act once or twice. Always wanted to know how it was done. Never told him.`,
+  "mortician":                 (v) => `${v.name} arranged services for someone in his household last spring. We spoke briefly. Professional.`,
+  "fence":                     (v) => `${v.name}? Heard the name. Don't recall doing business with him. Don't recall NOT doing business.`,
+  "society photographer":      (v) => `${v.name}? Photographed him at three or four galas. Always asked to see the proofs first.`,
+  "insurance investigator":    (v) => `${v.name} held two policies through my company. Standard, until recently. Recently, less so.`,
 };
 
 const KNEW_VICTIM_ZH = {
@@ -448,6 +658,14 @@ const KNEW_VICTIM_ZH = {
   "茶楼算命先生":       (v) => `${v.name} 来摸过两次卦，每次卦象都一样的凶。`,
   "码头脚行":           (v) => `听过名字。在他码头上扛过包，抠门得很。`,
   "默片影后":           (v) => `我们……曾有过那么一段。在咱们的名字还值钱的年月里。`,
+  "百乐门吧台师傅":     (v) => `${v.name}? 这位先生是我们这儿的常客，喝威士忌纯的，打赏大方，话却少。`,
+  "拳馆教头":           (v) => `${v.name}? 在拳馆边上看过几场比赛。台下挺客气，下注却讲究。`,
+  "黄包车夫":           (v) => `送过 ${v.name} 几趟夜归。坐车不爱讲话，赏钱给得不少，仅此而已。`,
+  "大世界戏法师":       (v) => `${v.name} 来看过我两三场戏法，老问我怎么变的。我没告诉他。`,
+  "义庄先生":           (v) => `${v.name} 春上为府里某位办过一桩事，跟我打过交道，礼数周全。`,
+  "黑市掮客":           (v) => `${v.name}? 名字耳熟，但我不记得做过他生意，也不记得没做过。`,
+  "画报摄影师":         (v) => `${v.name}? 在三四场酒会上拍过他，每次都先要看小样才让登。`,
+  "古董行掌柜":         (v) => `${v.name} 在我柜上买过两三件东西，眼力毒辣，砍价的手也毒辣。`,
 };
 
 const KNEW_VICTIM_BY_LANG = { en: KNEW_VICTIM_EN, zh: KNEW_VICTIM_ZH };
@@ -734,8 +952,11 @@ async function generateCase(lang = "en", seedInput = null, difficulty = "normal"
   const minute = pick([0, 15, 30, 45], rng);
   const timeOfDeath = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 
-  const suspectNames = sample(POOLS.names, N, rng);
-  const occupations  = sample(POOLS.occupations, N, rng);
+  // Pre-paired (name, occupation) sampling -- same pair always, never a
+  // doctor doubling as a fortune teller.
+  const sampledSuspects = sample(POOLS.suspects, N, rng);
+  const suspectNames = sampledSuspects.map(s => s.name);
+  const occupations  = sampledSuspects.map(s => s.occupation);
   const secretsPool  = sample(POOLS.redHerringSecrets, N, rng);
   // Need N-1 true alibis (one for each non-killer)
   const trueAlibis   = sample(POOLS.trueAlibis, N - 1, rng);
