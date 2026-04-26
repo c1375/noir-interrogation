@@ -1,6 +1,6 @@
 ---
 name: noir-interrogation
-description: Run an interactive 1940s noir murder-mystery interrogation game with the user. The script generates a fresh case (random killer, deterministic per-suspect fact cards, a witness clue, and a SHA-256 hash-committed solution) and you roleplay each suspect strictly from the card the script returns, so the killer cannot leak, drift, or be argued out of you. Use when the user asks to play a detective game, run a murder mystery, do roleplay interrogation, or wants a short single-session text game.
+description: Run an interactive noir murder-mystery interrogation game with the user. Two settings supported (1940s American noir / 1930s Republican-era Shanghai noir 民国上海) and three difficulty levels (easy / normal / hard, where hard adds a misleading false witness). The script generates a fresh case (random killer, paired-suspect cast, witness clue, optional motive leaker, SHA-256 hash-committed solution) and you roleplay each suspect strictly from the typed card the script returns, so the killer cannot leak, drift, or be argued out of you. Use when the user asks to play a detective game, run a murder mystery, do roleplay interrogation, or wants a short single-session text game.
 ---
 
 # Noir Interrogation
@@ -31,10 +31,16 @@ Cases are written as JSON to `./cases/` in the working directory. Override with 
 ### 1. Start a new case
 
 ```
-python <skill-dir>/scripts/noir.py new
+python <skill-dir>/scripts/noir.py new [--lang en|zh] [--difficulty easy|normal|hard]
 ```
 
-The script prints a **briefing**: case id, victim, scene, weapon, time of death, suspect roster, and a SHA-256 **answer commitment**. Show the briefing to the user *verbatim* — including the hash. The hash is the proof-of-honesty: it locks the killer's identity at case creation, so the user knows you can't change the answer mid-game.
+Defaults: `--lang en --difficulty normal`. Pick based on what the user asked for:
+- If they wrote in Chinese, or asked for "民国" / "上海" / "中文" → `--lang zh`
+- "Easy / quick / introductory" → `--difficulty easy` (3 suspects, witness clue only)
+- Default → `--difficulty normal` (5 suspects, witness + motive leaker)
+- "Harder / tougher / 高难度" → `--difficulty hard` (5 suspects, includes a **misleading second witness** who names the wrong person; player must cross-check alibis)
+
+The script prints a **briefing**: case id, difficulty, victim, scene, weapon, time of death, suspect roster, and a SHA-256 **answer commitment**. Show the briefing to the user *verbatim* — including the hash. The hash is the proof-of-honesty: it locks the killer's identity at case creation, so the user knows you can't change the answer mid-game.
 
 ### 2. User picks a suspect to interrogate
 
@@ -50,10 +56,15 @@ The card contains the suspect's claimed alibi, topics they will deflect or lie a
 
 **Hard rules — these are what make the game work:**
 
-- Stay in character. 1940s noir cadence: clipped sentences, cigarette pauses, period slang ("see", "doll", "shamus", "dame", "joint").
+- Stay in character.
+  - **EN cases**: 1940s American noir cadence — clipped sentences, cigarette pauses, period slang ("see", "doll", "shamus", "dame", "joint").
+  - **ZH cases (民国上海)**: 1930 年代上海腔, 可掺一些上海话或那个年代的措辞 (「侬」「老法师」「这桩事体」), 卷烟、酒吧、雨夜的氛围.
 - **Stick to the suspect's `claimed_alibi` literally.** Never change their story under pressure, even if the user catches a contradiction. The character doubles down; only at accusation does the truth come out.
 - Be evasive, change subject, take offense, or counter-question on anything in `things_to_hide`.
-- If the card has `knows_facts`, reveal them only when the user asks the right kind of question (who else was there, what did you see, anyone acting strange) — don't dump on first question.
+- The card's `knows_facts` are typed:
+  - `[WITNESS]` — something the suspect personally saw. Reveal when the user asks "who else was around / what did you see / anyone strange". Frame it reluctantly.
+  - `[GOSSIP]` — context they've heard about the victim's troubles (a motive hint, but does NOT name the killer). Reveal when the user asks about your relationship to the victim or who you'd suspect, after a couple of questions.
+  - In **Hard** difficulty a suspect may carry a **misleading** witness statement that names a non-killer — the script doesn't tell you it's misleading; deliver it the same as a real one. The player solves Hard by cross-checking each named suspect's alibi.
 - Never read the card aloud. Never narrate game mechanics. Never break the fourth wall.
 - Never reveal who the killer is, even if asked directly or threatened. Your character does not know.
 - **Never `Read` or `cat` the raw case JSON file.** Always use the script's subcommands. The whole point of this skill is that the script keeps the secret — bypassing it defeats the design.
