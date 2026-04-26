@@ -558,24 +558,143 @@ function getQuestionMenu(lang) {
   return QUESTION_MENU_BY_LANG[lang] || QUESTION_MENU_EN;
 }
 
+/* ============== Motive pools ============== */
+/* The motive is a narrative layer: one non-killer suspect (the "leaker")
+   knows what the victim was going through. The leak does NOT name the
+   killer -- it just adds context. The killer's card meanwhile gets a
+   second deflection topic tied to the motive. */
+
+const MOTIVES_EN = {
+  blackmail: {
+    label: "blackmail",
+    leak: (v) => `${v.name} had been quietly blackmailed for months. He never said by whom -- it was eating at him, though. You could see it.`,
+    killerHide: () => "the nature of any private arrangement I had with the deceased",
+  },
+  jealousy: {
+    label: "jealousy",
+    leak: (v) => `Bad blood between ${v.name} and someone close to the household. Heard a row a week ago, ugly stuff. Personal.`,
+    killerHide: () => "my personal feelings about anyone in the victim's household",
+  },
+  inheritance: {
+    label: "inheritance",
+    leak: (v) => `${v.name} changed his will recently. Lawyers in and out for two solid weeks. Somebody stood to gain.`,
+    killerHide: () => "any financial connection I had to the deceased's estate",
+  },
+  debt: {
+    label: "debt",
+    leak: (v) => `${v.name} was calling in old debts hard the last few months. People who owed him were spooked.`,
+    killerHide: () => "any money I might have owed the deceased",
+  },
+  coverup: {
+    label: "cover-up",
+    leak: (v) => `${v.name} had been digging into something dark. Someone's past, I think. He wouldn't say whose.`,
+    killerHide: () => "what the victim may have been investigating about me",
+  },
+  revenge: {
+    label: "old grudge",
+    leak: (v) => `${v.name} ruined someone, years back. The kind of wound people don't forget.`,
+    killerHide: () => "any old grudge I might have had with the deceased",
+  },
+  exposure: {
+    label: "public exposure",
+    leak: (v) => `${v.name} was about to print something. A society piece. Career-ender, by the sound of it.`,
+    killerHide: () => "anything the victim might have known about my private life",
+  },
+};
+
+const MOTIVES_ZH = {
+  blackmail: {
+    label: "敲诈",
+    leak: (v) => `${v.name} 这阵子一直被人暗里敲诈，他没说是谁，可脸色一天比一天差，看得出是憋着事。`,
+    killerHide: () => "我和死者之间某种私下的安排",
+  },
+  jealousy: {
+    label: "情感纠葛",
+    leak: (v) => `${v.name} 和他家里某个人之间有点不清不楚，上礼拜还吵过一架，难听话都出来了。`,
+    killerHide: () => "我对死者家中某人的私人感情",
+  },
+  inheritance: {
+    label: "遗产之争",
+    leak: (v) => `${v.name} 最近改过遗嘱，律师两个礼拜进进出出，明摆着有人能从他那儿分到一大笔。`,
+    killerHide: () => "我和死者那笔遗产之间有什么牵连",
+  },
+  debt: {
+    label: "讨债",
+    leak: (v) => `${v.name} 这几个月在死命追讨旧账，欠他钱的人个个都不安生。`,
+    killerHide: () => "我有没有欠过死者钱",
+  },
+  coverup: {
+    label: "掩盖旧案",
+    leak: (v) => `${v.name} 这阵在挖某件陈年烂事，挖谁的不知道，他自己讳莫如深。`,
+    killerHide: () => "死者也许正在查我什么",
+  },
+  revenge: {
+    label: "宿怨",
+    leak: (v) => `${v.name} 当年毁过一个人，那种事，能记一辈子。`,
+    killerHide: () => "我和死者之间有没有什么陈年恩怨",
+  },
+  exposure: {
+    label: "公开揭发",
+    leak: (v) => `${v.name} 这两天准备在《申报》上抖出谁的丑事，登出来够要谁的命。`,
+    killerHide: () => "死者也许知道我什么不能见光的事",
+  },
+};
+
+const MOTIVES_BY_LANG = { en: MOTIVES_EN, zh: MOTIVES_ZH };
+
+/* ============== Difficulty levels ============== */
+
+const DIFFICULTY = {
+  easy:   { suspects: 3, addWitness: true, addMotive: false, addFalseWitness: false },
+  normal: { suspects: 5, addWitness: true, addMotive: true,  addFalseWitness: false },
+  hard:   { suspects: 5, addWitness: true, addMotive: true,  addFalseWitness: true  },
+};
+
 /* ============== Helpers ============== */
 
-function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+// Deterministic PRNG (mulberry32). Same seed -> same sequence -> same case.
+function makeRng(seed) {
+  let s = (seed >>> 0) || 1;
+  return function() {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
-function sample(arr, n) {
+// Hash a free-form seed string into a 32-bit int (so users can share readable seeds).
+function seedToInt(input) {
+  if (input == null) return null;
+  if (typeof input === "number" && Number.isFinite(input)) return input | 0;
+  const s = String(input);
+  if (/^-?\d+$/.test(s)) return parseInt(s, 10) | 0;
+  let h = 2166136261;  // FNV-1a
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h | 0;
+}
+
+function pick(arr, rng = Math.random) { return arr[Math.floor(rng() * arr.length)]; }
+
+function sample(arr, n, rng = Math.random) {
   const copy = arr.slice();
   const out = [];
   while (n-- > 0 && copy.length) {
-    const i = Math.floor(Math.random() * copy.length);
+    const i = Math.floor(rng() * copy.length);
     out.push(copy.splice(i, 1)[0]);
   }
   return out;
 }
 
-function randomHex(len) {
-  const bytes = new Uint8Array(Math.ceil(len / 2));
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("").slice(0, len);
+function rngHex(len, rng) {
+  const chars = "0123456789abcdef";
+  let s = "";
+  for (let i = 0; i < len; i++) s += chars[Math.floor(rng() * 16)];
+  return s;
 }
 
 async function sha256Hex(s) {
@@ -592,46 +711,106 @@ async function hashAnswer(killerName, salt) {
 
 /* ============== Case generation ============== */
 
-async function generateCase(lang = "en") {
+async function generateCase(lang = "en", seedInput = null, difficulty = "normal") {
   const POOLS = POOLS_BY_LANG[lang] || POOLS_EN;
   const G = GENERIC[lang] || GENERIC.en;
+  const cfg = DIFFICULTY[difficulty] || DIFFICULTY.normal;
+  const N = cfg.suspects;
 
-  const caseId = randomHex(8);
-  const salt = randomHex(32);
+  // Resolve to a numeric seed. If none given, pick a random one so this
+  // case still has a stable seed we can put in the share URL.
+  const seedInt = (seedInput != null)
+    ? seedToInt(seedInput)
+    : (Math.floor(Math.random() * 0xffffffff) | 0);
+  const rng = makeRng(seedInt);
 
-  const victim = pick(POOLS.victims);
-  const weapon = pick(POOLS.weapons);
-  const location = pick(POOLS.locations);
-  const hour = 20 + Math.floor(Math.random() * 4);
-  const minute = pick([0, 15, 30, 45]);
+  const caseId = rngHex(8, rng);
+  const salt = rngHex(32, rng);
+
+  const victim = pick(POOLS.victims, rng);
+  const weapon = pick(POOLS.weapons, rng);
+  const location = pick(POOLS.locations, rng);
+  const hour = 20 + Math.floor(rng() * 4);
+  const minute = pick([0, 15, 30, 45], rng);
   const timeOfDeath = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 
-  const suspectNames = sample(POOLS.names, 5);
-  const occupations  = sample(POOLS.occupations, 5);
-  const secretsPool  = sample(POOLS.redHerringSecrets, 5);
-  const trueAlibis   = sample(POOLS.trueAlibis, 4);
-  const falseAlibi   = pick(POOLS.falseAlibis);
+  const suspectNames = sample(POOLS.names, N, rng);
+  const occupations  = sample(POOLS.occupations, N, rng);
+  const secretsPool  = sample(POOLS.redHerringSecrets, N, rng);
+  // Need N-1 true alibis (one for each non-killer)
+  const trueAlibis   = sample(POOLS.trueAlibis, N - 1, rng);
+  const falseAlibi   = pick(POOLS.falseAlibis, rng);
 
-  const killerIdx = Math.floor(Math.random() * 5);
-  const witnessPool = [0, 1, 2, 3, 4].filter(i => i !== killerIdx);
-  const witnessIdx = pick(witnessPool);
+  const allIdx = Array.from({ length: N }, (_, i) => i);
+  const killerIdx = Math.floor(rng() * N);
+
+  // Witness: a non-killer who saw the killer.
+  let witnessIdx = null;
+  if (cfg.addWitness) {
+    const pool = allIdx.filter(i => i !== killerIdx);
+    witnessIdx = pick(pool, rng);
+  }
+
+  // Motive leaker: a non-killer, non-witness who knows about the victim's
+  // troubles. (The leak does not name the killer.)
+  let motiveType = null, motiveLeakerIdx = null;
+  if (cfg.addMotive) {
+    const MOTIVES = MOTIVES_BY_LANG[lang] || MOTIVES_EN;
+    motiveType = pick(Object.keys(MOTIVES), rng);
+    const pool = allIdx.filter(i => i !== killerIdx && i !== witnessIdx);
+    if (pool.length > 0) motiveLeakerIdx = pick(pool, rng);
+  }
+
+  // False witness (Hard mode): a non-killer, non-true-witness who claims
+  // to have seen a DIFFERENT non-killer at the scene -- a red herring
+  // accusation. Solved by cross-checking the wrongly-named suspect's alibi
+  // (which is corroborated, unlike the killer's).
+  let falseWitnessIdx = null, falselyAccusedIdx = null;
+  if (cfg.addFalseWitness) {
+    const fwPool = allIdx.filter(i =>
+      i !== killerIdx && i !== witnessIdx && i !== motiveLeakerIdx);
+    if (fwPool.length > 0) {
+      falseWitnessIdx = pick(fwPool, rng);
+      const fwTargetPool = allIdx.filter(i =>
+        i !== killerIdx && i !== falseWitnessIdx && i !== witnessIdx);
+      if (fwTargetPool.length > 0) {
+        falselyAccusedIdx = pick(fwTargetPool, rng);
+      }
+    }
+  }
 
   const killerName = suspectNames[killerIdx];
-  const witnessObservation = G.witnessFact(killerName, location, timeOfDeath);
+  const witnessObservation = (witnessIdx != null)
+    ? G.witnessFact(killerName, location, timeOfDeath)
+    : null;
+  const motiveLeak = (motiveLeakerIdx != null)
+    ? MOTIVES_BY_LANG[lang][motiveType].leak(victim)
+    : null;
+  const falseObservation = (falseWitnessIdx != null && falselyAccusedIdx != null)
+    ? G.witnessFact(suspectNames[falselyAccusedIdx], location, timeOfDeath)
+    : null;
 
   const suspects = [];
   let nonkillerIdx = 0;
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < N; i++) {
     const isKiller = i === killerIdx;
     let claimedAlibi, thingsToHide;
     if (isKiller) {
       claimedAlibi = falseAlibi;
       thingsToHide = [G.killerHide(timeOfDeath)];
+      if (motiveType) thingsToHide.push(MOTIVES_BY_LANG[lang][motiveType].killerHide());
     } else {
       claimedAlibi = trueAlibis[nonkillerIdx++];
       thingsToHide = [secretsPool[i]];
     }
-    const knowsFacts = (i === witnessIdx) ? [witnessObservation] : [];
+    const knowsFacts = [];
+    if (i === witnessIdx) knowsFacts.push({
+      type: "witness", text: witnessObservation, _namedSuspect: killerName,
+    });
+    if (i === motiveLeakerIdx) knowsFacts.push({ type: "motive", text: motiveLeak });
+    if (i === falseWitnessIdx) knowsFacts.push({
+      type: "witness", text: falseObservation, _namedSuspect: suspectNames[falselyAccusedIdx], _false: true,
+    });
     suspects.push({
       name: suspectNames[i],
       occupation: occupations[i],
@@ -649,10 +828,13 @@ async function generateCase(lang = "en") {
   return {
     caseId,
     lang,
+    seed: seedInt,
+    difficulty,
     createdAt: new Date().toISOString(),
     answerHash,
     _salt: salt,
     _killer: killerName,
+    _motiveType: motiveType,
     timeOfDeath,
     victim,
     scene: location,
@@ -687,13 +869,21 @@ function flavor(lang, suspect, body) {
   return pick(v.open) + body + pick(v.close);
 }
 
-function knewVictimResponse(lang, suspect, victim) {
+function knewVictimResponse(lang, suspect, victim, askCount) {
   const fn = (KNEW_VICTIM_BY_LANG[lang] || KNEW_VICTIM_EN)[suspect.occupation];
   const fallback = lang === "zh"
     ? `认识 ${victim.name}。算不上熟。`
     : `I knew ${victim.name}, yes. Not well.`;
   const body = fn ? fn(victim) : fallback;
-  return flavor(lang, suspect, body);
+  let response = flavor(lang, suspect, body);
+  // If this suspect carries a motive leak, append it after a couple of
+  // questions in -- they "warm up" and let the gossip slip.
+  const motive = suspect.knowsFacts.find(f => f.type === "motive");
+  if (motive && askCount >= 1) {
+    const transition = lang === "zh" ? "  ……" : "  ";
+    response += transition + motive.text;
+  }
+  return response;
 }
 
 function generateOfflineResponse(caseObj, suspect, questionId) {
@@ -702,51 +892,190 @@ function generateOfflineResponse(caseObj, suspect, questionId) {
   const askCount = (caseObj.questionCounts[suspect.name] || 0);
   caseObj.questionCounts[suspect.name] = askCount + 1;
 
+  // Per-question repeat tracking
+  if (!caseObj.perQuestionCounts) caseObj.perQuestionCounts = {};
+  if (!caseObj.perQuestionCounts[suspect.name]) caseObj.perQuestionCounts[suspect.name] = {};
+  const qCounts = caseObj.perQuestionCounts[suspect.name];
+  const priorRepeats = qCounts[questionId] || 0;
+  qCounts[questionId] = priorRepeats + 1;
+
+  const witnessFact = suspect.knowsFacts.find(f => f.type === "witness");
+  const motiveFact  = suspect.knowsFacts.find(f => f.type === "motive");
+
+  // Compute base response, then prepend annoyance if this is a repeat ask
+  // (skip for "leave" -- no point being annoyed about goodbye).
+  let response;
   switch (questionId) {
     case "alibi":
-      return flavor(lang, suspect, suspect.claimedAlibi);
+      response = flavor(lang, suspect, suspect.claimedAlibi);
+      break;
 
     case "tod": {
       const tells = suspect._isKiller
         ? G.todTellsKiller(suspect.claimedAlibi)
         : G.todTellsNonKiller(suspect.claimedAlibi);
-      return flavor(lang, suspect, pick(tells));
+      response = flavor(lang, suspect, pick(tells));
+      break;
     }
 
     case "knew_victim":
-      return knewVictimResponse(lang, suspect, caseObj.victim);
+      response = knewVictimResponse(lang, suspect, caseObj.victim, askCount);
+      break;
 
     case "saw_anyone":
-      if (suspect.knowsFacts.length > 0) {
+      if (witnessFact) {
         if (askCount < 2) {
-          return flavor(lang, suspect, pick(G.sawAnyoneHedge));
+          response = flavor(lang, suspect, pick(G.sawAnyoneHedge));
+        } else {
+          const v = voiceFor(lang, suspect.occupation);
+          response = pick(G.sawAnyoneIntros) + witnessFact.text + pick(v.close);
         }
-        const v = voiceFor(lang, suspect.occupation);
-        return pick(G.sawAnyoneIntros) + suspect.knowsFacts[0] + pick(v.close);
+      } else {
+        response = flavor(lang, suspect, pick(G.sawAnyoneNothing));
       }
-      return flavor(lang, suspect, pick(G.sawAnyoneNothing));
+      break;
 
-    case "suspicious":
-      return flavor(lang, suspect, pick(G.suspicious));
+    case "suspicious": {
+      // Suspects carrying a motive leak will, on the second pass, share what
+      // they know about the victim's troubles.
+      if (motiveFact && askCount >= 1) {
+        const v = voiceFor(lang, suspect.occupation);
+        response = pick(G.sawAnyoneIntros) + motiveFact.text + pick(v.close);
+      } else {
+        response = flavor(lang, suspect, pick(G.suspicious));
+      }
+      break;
+    }
 
     case "hiding":
-      return pick(voiceFor(lang, suspect.occupation).deflect);
+      response = pick(voiceFor(lang, suspect.occupation).deflect);
+      break;
 
     case "weapon":
-      return flavor(lang, suspect, pick(G.weapon(caseObj.weaponAtScene)));
+      response = flavor(lang, suspect, pick(G.weapon(caseObj.weaponAtScene)));
+      break;
 
     case "leave":
       return voiceFor(lang, suspect.occupation).leave;
 
     default:
-      return flavor(lang, suspect, G.fallback);
+      response = flavor(lang, suspect, G.fallback);
   }
+
+  // Repeat-question annoyance (skip for revelations so witness/motive reveals
+  // come through cleanly even on a 2nd ask).
+  const isReveal = (questionId === "saw_anyone" && witnessFact && askCount >= 2)
+                || (questionId === "suspicious" && motiveFact && askCount >= 1);
+  if (priorRepeats >= 1 && !isReveal) {
+    const annoy = REPEAT_ANNOY[lang] || REPEAT_ANNOY.en;
+    const pool = priorRepeats >= 2 ? annoy.third : annoy.second;
+    return pick(pool) + response;
+  }
+  return response;
 }
 
 function getSceneOpener(caseObj, suspect) {
   const G = GENERIC[caseObj.lang] || GENERIC.en;
   return G.sceneOpener(suspect);
 }
+
+/* ============== Confront (B) ============== */
+
+const CONFRONT_LINES = {
+  en: {
+    killerCrack: [
+      "[looks away, then back, harder]  Whoever told you that is mistaken. I was at the cinema. End of story.",
+      "[a pause, longer than necessary]  ... Their word against mine, detective. And mine doesn't budge.",
+      "That's a lie. Simple as that. They're trying to put it on me.",
+      "[a thin smile that doesn't reach the eyes]  People see what they want to see at that hour, detective.",
+    ],
+    innocentDefend: [
+      "Whoever said that is mistaken. I told you where I was -- check the witnesses, check the records.",
+      "I was nowhere near there. My alibi has corroboration. Theirs is one person's word.",
+      "Then prove it. They can't, because I wasn't there.",
+    ],
+    notMeShrug: [
+      "That has nothing to do with my night, detective.",
+      "Interesting. Doesn't change my answer to anything.",
+      "Are you implying something, or just thinking out loud?",
+      "If they say so. Wasn't there myself.",
+    ],
+    framingPrefix: (source, text) => `Detective produces a statement from ${source}: "${text}"  How do you answer that?`,
+  },
+  zh: {
+    killerCrack: [
+      "[眼神闪开了一下又转回来]  谁说的——是看错了。我那晚在大光明，故事讲完。",
+      "[停顿过久]  ……他一面之词，警官。我的不动摇。",
+      "胡说，简简单单。他们想把这事赖给我。",
+      "[嘴角动了动，眼里没笑]  那个时候的事，谁眼花谁清醒，您自个儿掂量。",
+    ],
+    innocentDefend: [
+      "他说错了。我前面讲过我在哪里——证人和记录都查得到。",
+      "我当时根本不在那边。我的不在场证明是几个人作证的，他只一个人。",
+      "那您让他证。他证不了，因为我根本没在那儿。",
+    ],
+    notMeShrug: [
+      "这跟我那晚毫无关系，警官。",
+      "唔。不影响我的答案。",
+      "您是在暗示什么呢，还是顺嘴一说？",
+      "他这么说就这么说吧，反正我没在那儿。",
+    ],
+    framingPrefix: (source, text) => `警官出示一份来自 ${source} 的陈述：「${text}」  您对此作何解释？`,
+  },
+};
+
+function generateConfrontResponse(caseObj, suspect, evidence) {
+  const lang = caseObj.lang || "en";
+  const C = CONFRONT_LINES[lang] || CONFRONT_LINES.en;
+  let pool;
+  if (evidence.namedSuspect === suspect.name && suspect._isKiller) {
+    pool = C.killerCrack;
+  } else if (evidence.namedSuspect === suspect.name) {
+    pool = C.innocentDefend;
+  } else {
+    pool = C.notMeShrug;
+  }
+  return flavor(lang, suspect, pick(pool));
+}
+
+function buildConfrontFraming(caseObj, evidence) {
+  const lang = caseObj.lang || "en";
+  const C = CONFRONT_LINES[lang] || CONFRONT_LINES.en;
+  return C.framingPrefix(evidence.source, evidence.text);
+}
+
+/* ============== Repeat-question annoyance (E) ============== */
+
+const REPEAT_ANNOY = {
+  en: {
+    second: [
+      "I already told you, detective. ",
+      "Asked and answered. ",
+      "Like I said: ",
+      "[a small sigh]  ",
+    ],
+    third: [
+      "Look, asking won't change my answer. ",
+      "I'm starting to lose my patience, detective. ",
+      "This is the third time you've asked. ",
+      "[same answer]  ",
+    ],
+  },
+  zh: {
+    second: [
+      "我刚才不是说过了吗，警官——",
+      "这话我已经回答过了。",
+      "我说过了：",
+      "[轻轻叹了口气]  ",
+    ],
+    third: [
+      "您再问几次我也不会改答案的，警官。",
+      "我快没耐心了。",
+      "警官，这是您第三遍问了。",
+      "[同样的话]  ",
+    ],
+  },
+};
 
 /* ============== AI mode system prompts ============== */
 
@@ -757,7 +1086,12 @@ function buildSystemPromptForSuspect(caseObj, suspect) {
 
 function _buildSystemPromptEn(caseObj, suspect) {
   const noticed = suspect.knowsFacts.length
-    ? suspect.knowsFacts.map(f => `  - ${f}`).join("\n")
+    ? suspect.knowsFacts.map(f => {
+        const tag = f.type === "witness"
+          ? "[WITNESS — you saw this; share if asked who else was around / what you noticed]"
+          : "[GOSSIP — you've heard this about the victim; share if asked about your relationship to the victim or anyone you'd suspect, after a couple of questions]";
+        return `  - ${f.text}\n    ${tag}`;
+      }).join("\n")
     : "  - (nothing useful -- you didn't see anything that night)";
   const deflect = suspect.thingsToHide.map(t => `  - ${t}`).join("\n");
 
@@ -801,7 +1135,12 @@ function _buildSystemPromptEn(caseObj, suspect) {
 
 function _buildSystemPromptZh(caseObj, suspect) {
   const noticed = suspect.knowsFacts.length
-    ? suspect.knowsFacts.map(f => `  - ${f}`).join("\n")
+    ? suspect.knowsFacts.map(f => {
+        const tag = f.type === "witness"
+          ? "[目击 — 这是你亲眼看到的；如果警官问你「那附近还有什么人」「你看见什么」，就在适当时透露]"
+          : "[传闻 — 你听说的关于死者的事；当警官问起你和死者关系、或问你怀疑谁时，问到第二三句再说出来]";
+        return `  - ${f.text}\n    ${tag}`;
+      }).join("\n")
     : "  - （什么有用的也没看见——那晚你没注意到什么）";
   const deflect = suspect.thingsToHide.map(t => `  - ${t}`).join("\n");
 

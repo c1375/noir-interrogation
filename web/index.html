@@ -13,10 +13,15 @@
   <div class="film-grain" aria-hidden="true"></div>
   <div class="vignette" aria-hidden="true"></div>
 
-  <!-- Floating language toggle, persistent across all screens -->
-  <div class="lang-toggle">
-    <button data-lang="en" data-i18n="lang.toggleEn">EN</button>
-    <button data-lang="zh" data-i18n="lang.toggleZh">中</button>
+  <!-- Floating language + audio toggles, persistent across all screens -->
+  <div class="floating-controls">
+    <div class="audio-toggle">
+      <button data-action="toggle-audio" title="Sound" aria-label="Sound">♪</button>
+    </div>
+    <div class="lang-toggle">
+      <button data-lang="en" data-i18n="lang.toggleEn">EN</button>
+      <button data-lang="zh" data-i18n="lang.toggleZh">中</button>
+    </div>
   </div>
 
   <main id="app">
@@ -27,6 +32,17 @@
         <div class="title-stamp" data-i18n="title.confidential">CONFIDENTIAL</div>
         <h1 class="game-title" data-i18n="title.h1">Noir<br>Interrogation</h1>
         <p class="tagline" data-i18n="title.tagline">A one-shot detective game.<br>Five suspects. One killer. The script holds the answer.</p>
+
+        <div class="difficulty-block">
+          <div class="difficulty-label" data-i18n="title.difficulty">DIFFICULTY</div>
+          <div class="difficulty-toggle">
+            <button data-difficulty="easy"   data-i18n="diff.easy">EASY</button>
+            <button data-difficulty="normal" data-i18n="diff.normal">NORMAL</button>
+            <button data-difficulty="hard"   data-i18n="diff.hard">HARD</button>
+          </div>
+          <div class="difficulty-desc" id="difficulty-desc" data-i18n="diff.descNormal">5 suspects • 1 witness clue • 1 motive leaker</div>
+        </div>
+
         <div class="title-buttons">
           <button class="btn-primary" data-action="new-case" data-i18n="btn.newCase">NEW CASE</button>
           <button class="btn-secondary" data-action="open-settings" data-i18n="btn.settings">SETTINGS</button>
@@ -41,6 +57,7 @@
         <div class="case-header">
           <span class="case-stamp" data-i18n="briefing.caseFile">CASE FILE</span>
           <span class="case-id" id="briefing-case-id">#--------</span>
+          <span class="case-difficulty" id="briefing-difficulty">NORMAL</span>
           <span class="case-status" data-i18n="briefing.statusOpen">OPEN</span>
         </div>
         <div class="case-body">
@@ -59,6 +76,12 @@
             <div class="commitment-note" data-i18n="briefing.commitNote">
               The killer's identity was decided at case creation. This hash locks it in. It will be re-verified when you accuse — proof the script can't change the answer based on your questions.
             </div>
+          </div>
+          <div class="seed-box">
+            <span class="seed-label" data-i18n="briefing.seedLabel">SEED:</span>
+            <span class="seed-value" id="briefing-seed">—</span>
+            <button class="btn-share" data-action="share-case" data-i18n="briefing.shareButton">SHARE THIS CASE</button>
+            <span class="share-status" id="share-status"></span>
           </div>
         </div>
         <div class="case-actions">
@@ -89,15 +112,36 @@
             <div class="suspect-occ" id="interrog-occ">—</div>
             <div class="suspect-voice" id="interrog-voice">—</div>
           </div>
-          <button class="btn-icon" data-action="goto-lineup" data-i18n="btn.backToLineup">← LINEUP</button>
+          <div class="interrog-header-actions">
+            <button class="btn-icon" data-action="toggle-notes" data-i18n="btn.notes">NOTES</button>
+            <button class="btn-icon" data-action="goto-lineup" data-i18n="btn.backToLineup">← LINEUP</button>
+          </div>
         </header>
+
+        <aside class="notes-panel" id="notes-panel">
+          <header class="notes-header">
+            <h3 data-i18n="notes.title">Case Notes</h3>
+            <button class="btn-icon" data-action="toggle-notes" aria-label="close">×</button>
+          </header>
+          <div class="notes-tabs" id="notes-tabs"></div>
+          <div class="notes-body" id="notes-body">
+            <p class="notes-empty" data-i18n="notes.empty">No statements collected yet. Question a suspect to fill the file.</p>
+          </div>
+        </aside>
         <div class="conversation" id="conversation"></div>
         <div class="ask-area" id="ask-area">
-          <div class="mode-toggle">
-            <span class="mode-label" data-i18n="interrog.modeLabel">Mode:</span>
-            <button class="mode-btn active" data-mode="offline">OFFLINE</button>
-            <button class="mode-btn" data-mode="ai">AI</button>
+          <div class="ask-area-header">
+            <div class="mode-toggle">
+              <span class="mode-label" data-i18n="interrog.modeLabel">Mode:</span>
+              <button class="mode-btn active" data-mode="offline">OFFLINE</button>
+              <button class="mode-btn" data-mode="ai">AI</button>
+            </div>
+            <button id="confront-btn" class="btn-confront"
+                    data-action="open-evidence-picker"
+                    data-i18n="btn.confront"
+                    disabled>CONFRONT</button>
           </div>
+          <div id="evidence-picker" class="evidence-picker"></div>
           <div class="ask-offline" id="ask-offline"></div>
           <div class="ask-ai" id="ask-ai" hidden>
             <textarea id="ai-input" rows="2"

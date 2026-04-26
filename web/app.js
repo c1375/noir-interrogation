@@ -7,17 +7,149 @@ const STATE = {
   case: null,                 // current case object
   currentSuspect: null,       // suspect being interrogated
   conversations: {},          // suspect.name -> [{role, content}]
+  notes: {},                  // suspect.name -> {category: [{q, a}, ...]}
+  notesOpen: false,
+  notesActiveTab: null,       // suspect name shown in panel
+  evidence: [],               // [{source, text, namedSuspect, isFalse}]
+  evidencePickerOpen: false,
   apiKey: null,
   apiModel: "claude-haiku-4-5-20251001",
   mode: "offline",            // "offline" | "ai"
   lang: "en",                 // "en" | "zh"
+  difficulty: "normal",       // "easy" | "normal" | "hard"
 };
 
 const LS = {
-  apiKey:   "noir.apiKey",
-  apiModel: "noir.apiModel",
-  lang:     "noir.lang",
+  apiKey:     "noir.apiKey",
+  apiModel:   "noir.apiModel",
+  lang:       "noir.lang",
+  difficulty: "noir.difficulty",
+  muted:      "noir.muted",
 };
+
+/* ============================== Audio (Web Audio API) ============================== */
+/* All SFX are synthesized in-browser -- no external asset files. The
+   AudioContext is lazily created on first user interaction (browser
+   autoplay rules). */
+
+const AUDIO = {
+  ctx: null,
+  muted: false,
+};
+
+function audioInit() {
+  if (AUDIO.ctx) return AUDIO.ctx;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    AUDIO.ctx = new Ctx();
+  } catch (_) { return null; }
+  return AUDIO.ctx;
+}
+
+function audioMuted() { return AUDIO.muted; }
+
+function audioToggle() {
+  AUDIO.muted = !AUDIO.muted;
+  localStorage.setItem(LS.muted, AUDIO.muted ? "1" : "0");
+  refreshAudioToggle();
+  if (!AUDIO.muted) audioInit();
+}
+
+function refreshAudioToggle() {
+  $$(".audio-toggle button").forEach(b => {
+    b.textContent = AUDIO.muted ? "♪̸" : "♪";
+    b.title = AUDIO.muted ? t("audio.unmute") : t("audio.mute");
+  });
+}
+
+// Short noise burst -- typewriter / click feel
+function sfxClick() {
+  if (AUDIO.muted) return;
+  const ctx = audioInit(); if (!ctx) return;
+  const dur = 0.04;
+  const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.012));
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const filter = ctx.createBiquadFilter();
+  filter.type = "highpass";
+  filter.frequency.value = 1500;
+  const gain = ctx.createGain();
+  gain.gain.value = 0.18;
+  src.connect(filter).connect(gain).connect(ctx.destination);
+  src.start();
+}
+
+// Door creak -- filtered noise sweep, dying out
+function sfxCreak() {
+  if (AUDIO.muted) return;
+  const ctx = audioInit(); if (!ctx) return;
+  const dur = 0.55;
+  const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    const t = i / data.length;
+    data[i] = (Math.random() * 2 - 1) * (1 - t) * 0.35;
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const filter = ctx.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.Q.value = 4;
+  filter.frequency.setValueAtTime(220, ctx.currentTime);
+  filter.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + dur);
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.22, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+  src.connect(filter).connect(gain).connect(ctx.destination);
+  src.start();
+}
+
+// Stamp / thud -- low-freq sine burst with snappy attack
+function sfxStamp() {
+  if (AUDIO.muted) return;
+  const ctx = audioInit(); if (!ctx) return;
+  const t0 = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(140, t0);
+  osc.frequency.exponentialRampToValueAtTime(35, t0 + 0.18);
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0, t0);
+  gain.gain.linearRampToValueAtTime(0.5, t0 + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.25);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(t0);
+  osc.stop(t0 + 0.3);
+  // Add a paper "snap" via short noise burst layered on top
+  setTimeout(sfxClick, 0);
+}
+
+// Vinyl crackle -- a short ambient burst we can tile
+function sfxCrackleBurst() {
+  if (AUDIO.muted) return;
+  const ctx = audioInit(); if (!ctx) return;
+  const dur = 0.6;
+  const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    // Mostly silence with rare loud pops — vinyl-like
+    data[i] = (Math.random() < 0.005) ? (Math.random() * 2 - 1) * 0.6 : 0;
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const filter = ctx.createBiquadFilter();
+  filter.type = "highpass";
+  filter.frequency.value = 2000;
+  const gain = ctx.createGain();
+  gain.gain.value = 0.22;
+  src.connect(filter).connect(gain).connect(ctx.destination);
+  src.start();
+}
 
 /* ============================== i18n strings ============================== */
 
@@ -27,8 +159,16 @@ const STRINGS = {
     "title.h1":            "Noir<br>Interrogation",
     "title.tagline":       "A one-shot detective game.<br>Five suspects. One killer. The script holds the answer.",
     "title.credit":        "Built as a Claude Code skill, ported to the browser.",
+    "title.difficulty":    "DIFFICULTY",
     "btn.newCase":         "NEW CASE",
     "btn.settings":        "SETTINGS",
+
+    "diff.easy":           "EASY",
+    "diff.normal":         "NORMAL",
+    "diff.hard":           "HARD",
+    "diff.descEasy":       "3 suspects • 1 witness clue • no motive layer",
+    "diff.descNormal":     "5 suspects • 1 witness clue • 1 motive leaker",
+    "diff.descHard":       "5 suspects • 1 true witness + 1 misleading witness • cross-check alibis",
 
     "briefing.caseFile":     "CASE FILE",
     "briefing.statusOpen":   "OPEN",
@@ -41,6 +181,28 @@ const STRINGS = {
     "briefing.commitLabel":  "ANSWER COMMITMENT — SHA-256",
     "briefing.commitNote":   "The killer's identity was decided at case creation. This hash locks it in. It will be re-verified when you accuse — proof the script can't change the answer based on your questions.",
     "btn.beginInterrog":     "BEGIN INTERROGATION",
+    "briefing.seedLabel":    "SEED:",
+    "briefing.shareButton":  "SHARE THIS CASE",
+    "briefing.shareCopied":  "✓ link copied to clipboard",
+    "briefing.shareManual":  "Copy this link to share the same case:",
+    "btn.notes":             "NOTES",
+    "btn.confront":          "CONFRONT",
+    "confront.noneCollected":"Question witness suspects until you've heard their statements; then confront other suspects with what you've heard.",
+    "confront.pickerTitle":  "Pick a statement to present:",
+    "confront.fromLabel":    (source) => `From ${source}:`,
+    "confront.cancel":       "CANCEL",
+    "notes.title":           "Case Notes",
+    "notes.empty":           "No statements collected yet. Question a suspect to fill the file.",
+    "notes.cat.alibi":       "Alibi",
+    "notes.cat.tod":         "Time-of-death whereabouts",
+    "notes.cat.knew_victim": "Relationship to victim",
+    "notes.cat.saw_anyone":  "Eyewitness account",
+    "notes.cat.suspicious":  "Their suspicions",
+    "notes.cat.hiding":      "Deflection on hidden topic",
+    "notes.cat.weapon":      "On the weapon",
+    "notes.cat.leave":       "Scene exit",
+    "notes.cat.free_form":   "Free-form questioning",
+    "notes.cat.confront":    "Confronted with evidence",
 
     "lineup.title":          "The Lineup",
     "lineup.sub":            "Pick one to bring into the interrogation room.",
@@ -96,6 +258,8 @@ const STRINGS = {
 
     "lang.toggleEn":         "EN",
     "lang.toggleZh":         "中",
+    "audio.mute":            "Mute sound",
+    "audio.unmute":          "Unmute sound",
   },
 
   zh: {
@@ -103,8 +267,16 @@ const STRINGS = {
     "title.h1":            "夜雾<br>审讯",
     "title.tagline":       "一局制侦探游戏。<br>五个嫌疑人，一个真凶。答案藏在脚本里。",
     "title.credit":        "原是 Claude Code 上的一个 skill，移植到了浏览器。",
+    "title.difficulty":    "难度",
     "btn.newCase":         "新案件",
     "btn.settings":        "设置",
+
+    "diff.easy":           "简单",
+    "diff.normal":         "标准",
+    "diff.hard":           "困难",
+    "diff.descEasy":       "3 个嫌疑人 · 1 条目击证词 · 无动机层",
+    "diff.descNormal":     "5 个嫌疑人 · 1 条目击证词 · 1 个动机泄露者",
+    "diff.descHard":       "5 个嫌疑人 · 1 条真证词 + 1 条误导证词 · 需交叉核对 alibi",
 
     "briefing.caseFile":     "案件档案",
     "briefing.statusOpen":   "受理中",
@@ -117,6 +289,28 @@ const STRINGS = {
     "briefing.commitLabel":  "答案承诺 — SHA-256",
     "briefing.commitNote":   "凶手身份在案件生成时即已确定。这串哈希将其锁定。提出指控时会重新校验，证明脚本无法根据您的提问偷改答案。",
     "btn.beginInterrog":     "开始审讯",
+    "briefing.seedLabel":    "种子：",
+    "briefing.shareButton":  "分享此案件",
+    "briefing.shareCopied":  "✓ 链接已复制",
+    "briefing.shareManual":  "复制此链接，朋友打开即获得同一案件：",
+    "btn.notes":             "笔记",
+    "btn.confront":          "对质",
+    "confront.noneCollected":"先多审几次目击证人，听到他们的陈述后再来对质其他嫌疑人。",
+    "confront.pickerTitle":  "选择一份陈述来出示：",
+    "confront.fromLabel":    (source) => `${source} 的陈述：`,
+    "confront.cancel":       "取消",
+    "notes.title":           "办案笔记",
+    "notes.empty":           "尚未收集到任何陈述。审讯嫌疑人会自动填入此处。",
+    "notes.cat.alibi":       "不在场证明",
+    "notes.cat.tod":         "案发时间的去向",
+    "notes.cat.knew_victim": "与死者的关系",
+    "notes.cat.saw_anyone":  "目击陈述",
+    "notes.cat.suspicious":  "对其他人的怀疑",
+    "notes.cat.hiding":      "对私事的回避",
+    "notes.cat.weapon":      "关于凶器",
+    "notes.cat.leave":       "退场",
+    "notes.cat.free_form":   "自由提问",
+    "notes.cat.confront":    "证据对质",
 
     "lineup.title":          "嫌疑人名单",
     "lineup.sub":            "挑一个进审讯室。",
@@ -172,6 +366,8 @@ const STRINGS = {
 
     "lang.toggleEn":         "EN",
     "lang.toggleZh":         "中",
+    "audio.mute":            "静音",
+    "audio.unmute":          "开启声音",
   },
 };
 
@@ -212,6 +408,12 @@ function setLang(lang) {
   STATE.lang = lang;
   localStorage.setItem(LS.lang, lang);
   applyI18n();
+  // Refresh dynamic strings that data-i18n doesn't catch.
+  setDifficulty(STATE.difficulty);
+  if (STATE.case) {
+    const diffEl = $("#briefing-difficulty");
+    if (diffEl) diffEl.textContent = t("diff." + (STATE.case.difficulty || "normal"));
+  }
 
   // Re-render dynamic content if a case is in progress.
   // Note: existing case content stays in its original language.
@@ -265,6 +467,9 @@ function renderBriefing() {
   $("#briefing-tod").textContent     = c.timeOfDeath;
   $("#briefing-weapon").textContent  = c.weaponAtScene;
   $("#briefing-hash").textContent    = c.answerHash;
+  if ($("#briefing-seed")) $("#briefing-seed").textContent = c.seed;
+  const diffEl = $("#briefing-difficulty");
+  if (diffEl) diffEl.textContent = t("diff." + (c.difficulty || "normal"));
 
   const sep = STATE.lang === "zh" ? "·" : "--";
   const roster = $("#briefing-roster");
@@ -312,6 +517,78 @@ function renderInterrogation(suspect) {
 
   renderQuestionMenu();
   setMode(STATE.mode);
+  refreshConfrontButton();
+  closeEvidencePicker();
+}
+
+function refreshConfrontButton() {
+  const btn = $("#confront-btn");
+  if (!btn) return;
+  if (STATE.evidence.length === 0) {
+    btn.disabled = true;
+    btn.title = t("confront.noneCollected");
+  } else {
+    btn.disabled = false;
+    btn.title = "";
+  }
+}
+
+function openEvidencePicker() {
+  if (STATE.evidence.length === 0) return;
+  STATE.evidencePickerOpen = true;
+  const picker = $("#evidence-picker");
+  picker.innerHTML = "";
+  picker.appendChild(el("div", { class: "picker-header" }, t("confront.pickerTitle")));
+  STATE.evidence.forEach(ev => {
+    const item = el("button",
+      { class: "evidence-item", onclick: () => confrontWith(ev) },
+      el("div", { class: "evidence-source" }, t("confront.fromLabel", ev.source)),
+      el("div", { class: "evidence-text" }, ev.text),
+    );
+    picker.appendChild(item);
+  });
+  picker.appendChild(el("button",
+    { class: "btn-secondary picker-cancel", onclick: closeEvidencePicker },
+    t("confront.cancel")));
+  picker.classList.add("open");
+}
+
+function closeEvidencePicker() {
+  STATE.evidencePickerOpen = false;
+  const picker = $("#evidence-picker");
+  if (picker) picker.classList.remove("open");
+}
+
+function confrontWith(evidence) {
+  closeEvidencePicker();
+  const suspect = STATE.currentSuspect;
+  const framing = buildConfrontFraming(STATE.case, evidence);
+  addBubble("detective", framing, suspect.name);
+  pushTurn("detective", framing);
+
+  const thinking = addBubble("thinking", "", suspect.name);
+
+  if (STATE.mode === "ai" && STATE.apiKey) {
+    callClaude(suspect, framing).then(reply => {
+      thinking.remove();
+      addBubble("suspect", reply, suspect.name);
+      pushTurn("suspect", reply);
+      addNote(suspect.name, "confront", framing, reply);
+    }).catch(err => {
+      thinking.remove();
+      addBubble("system",
+        `${t("interrog.errorPrefix")}${err.message}${t("interrog.errorSuffix")}`,
+        suspect.name);
+    });
+  } else {
+    const response = generateConfrontResponse(STATE.case, suspect, evidence);
+    setTimeout(() => {
+      thinking.remove();
+      addBubble("suspect", response, suspect.name);
+      pushTurn("suspect", response);
+      addNote(suspect.name, "confront", framing, response);
+    }, 600 + Math.random() * 400);
+  }
 }
 
 function renderQuestionMenu() {
@@ -349,10 +626,12 @@ function addBubble(role, content, suspectName, scroll = true) {
   const detectiveLabel = t("interrog.detective");
   if (role === "detective") {
     bubble = el("div", { class: "bubble detective", "data-label": detectiveLabel }, content);
+    sfxClick();
   } else if (role === "suspect") {
     bubble = el("div",
       { class: "bubble suspect", "data-name": suspectName },
       content);
+    sfxClick();
   } else if (role === "thinking") {
     bubble = el("div",
       { class: "bubble suspect thinking", "data-name": suspectName,
@@ -372,6 +651,88 @@ function pushTurn(role, content) {
   STATE.conversations[name].push({ role, content });
 }
 
+function maybeCollectEvidence(suspect) {
+  // Once the player has questioned a witness suspect more than a couple
+  // times, assume the statement has come up and add it to evidence.
+  // Avoid duplicates.
+  const witnessFact = suspect.knowsFacts.find(f => f.type === "witness");
+  if (!witnessFact) return;
+  const askCount = STATE.case.questionCounts[suspect.name] || 0;
+  if (askCount < 2) return;
+  if (STATE.evidence.some(e => e.source === suspect.name)) return;
+  STATE.evidence.push({
+    source: suspect.name,
+    text: witnessFact.text,
+    namedSuspect: witnessFact._namedSuspect,
+    isFalse: witnessFact._false || false,
+  });
+  refreshConfrontButton();
+}
+
+/* ============== Case Notes ============== */
+
+function addNote(suspectName, category, question, answer) {
+  if (!STATE.notes[suspectName]) STATE.notes[suspectName] = {};
+  if (!STATE.notes[suspectName][category]) STATE.notes[suspectName][category] = [];
+  STATE.notes[suspectName][category].push({ q: question, a: answer });
+  if (!STATE.notesActiveTab) STATE.notesActiveTab = suspectName;
+  if (STATE.notesOpen) renderNotes();
+}
+
+function toggleNotes() {
+  STATE.notesOpen = !STATE.notesOpen;
+  $("#notes-panel").classList.toggle("open", STATE.notesOpen);
+  if (STATE.notesOpen) {
+    if (!STATE.notesActiveTab && STATE.currentSuspect) {
+      STATE.notesActiveTab = STATE.currentSuspect.name;
+    }
+    renderNotes();
+  }
+}
+
+function renderNotes() {
+  const tabsEl = $("#notes-tabs");
+  const bodyEl = $("#notes-body");
+  const names = Object.keys(STATE.notes);
+  if (names.length === 0) {
+    tabsEl.innerHTML = "";
+    bodyEl.innerHTML = `<p class="notes-empty">${t("notes.empty")}</p>`;
+    return;
+  }
+  if (!names.includes(STATE.notesActiveTab)) STATE.notesActiveTab = names[0];
+
+  tabsEl.innerHTML = "";
+  names.forEach(n => {
+    const b = el("button", {
+      class: "notes-tab" + (n === STATE.notesActiveTab ? " active" : ""),
+      onclick: () => { STATE.notesActiveTab = n; renderNotes(); },
+    }, n);
+    tabsEl.appendChild(b);
+  });
+
+  const suspectNotes = STATE.notes[STATE.notesActiveTab] || {};
+  bodyEl.innerHTML = "";
+  // Display in canonical question order (then anything else)
+  const canonical = ["alibi", "tod", "knew_victim", "saw_anyone",
+                     "suspicious", "hiding", "weapon", "confront",
+                     "free_form", "leave"];
+  const orderedCats = canonical
+    .filter(c => suspectNotes[c])
+    .concat(Object.keys(suspectNotes).filter(c => !canonical.includes(c)));
+
+  orderedCats.forEach(cat => {
+    const sec = el("section", { class: "notes-section" });
+    sec.appendChild(el("h4", {}, t("notes.cat." + cat)));
+    suspectNotes[cat].forEach(({ q, a }) => {
+      const entry = el("div", { class: "notes-entry" });
+      entry.appendChild(el("div", { class: "notes-q" }, q));
+      entry.appendChild(el("div", { class: "notes-a" }, a));
+      sec.appendChild(entry);
+    });
+    bodyEl.appendChild(sec);
+  });
+}
+
 /* ============================== offline mode ============================== */
 
 function askOffline(questionId) {
@@ -389,6 +750,8 @@ function askOffline(questionId) {
     thinking.remove();
     addBubble("suspect", response, suspect.name);
     pushTurn("suspect", response);
+    addNote(suspect.name, questionId, qLabel, response);
+    maybeCollectEvidence(suspect);
   }, 450 + Math.random() * 350);
 
   if (questionId === "leave") {
@@ -420,6 +783,10 @@ async function askAI() {
     thinking.remove();
     addBubble("suspect", reply, suspect.name);
     pushTurn("suspect", reply);
+    addNote(suspect.name, "free_form", question, reply);
+    // Track question count for AI mode too (mirrors offline tracking)
+    STATE.case.questionCounts[suspect.name] = (STATE.case.questionCounts[suspect.name] || 0) + 1;
+    maybeCollectEvidence(suspect);
   } catch (err) {
     thinking.remove();
     addBubble("system",
@@ -486,6 +853,7 @@ function renderAccusationGrid() {
 }
 
 function showVerdict(v) {
+  sfxStamp();
   $("#verdict-accused").textContent = v.accused;
   $("#verdict-killer").textContent  = v.actualKiller;
 
@@ -561,17 +929,54 @@ function updateApiStatus(justSaved = false) {
 
 /* ============================== bootstrap ============================== */
 
-async function newCase() {
-  STATE.case = await generateCase(STATE.lang);
+async function newCase(seed = null) {
+  STATE.case = await generateCase(STATE.lang, seed, STATE.difficulty);
   STATE.conversations = {};
+  STATE.notes = {};
+  STATE.notesActiveTab = null;
+  STATE.evidence = [];
+  STATE.evidencePickerOpen = false;
   STATE.currentSuspect = null;
+  // Strip ?seed= from the URL on a fresh case so subsequent NEW CASE clicks
+  // don't keep producing the same case. Sharing happens via the explicit button.
+  if (window.location.search) {
+    history.replaceState(null, "", window.location.pathname);
+  }
   renderBriefing();
   show("screen-briefing");
+}
+
+function shareCurrentCase() {
+  if (!STATE.case) return;
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.searchParams.set("seed", String(STATE.case.seed));
+  url.searchParams.set("lang", STATE.case.lang);
+  const link = url.toString();
+  // Try clipboard API; fall back to a prompt
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link).then(() => {
+      flashShareStatus(t("briefing.shareCopied"));
+    }, () => {
+      window.prompt(t("briefing.shareManual"), link);
+    });
+  } else {
+    window.prompt(t("briefing.shareManual"), link);
+  }
+}
+
+function flashShareStatus(msg) {
+  const el = $("#share-status");
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add("visible");
+  setTimeout(() => el.classList.remove("visible"), 2200);
 }
 
 function gotoLineup() {
   if (!STATE.case) return;
   renderLineupGrid("lineup-grid", suspect => {
+    sfxCreak();
     renderInterrogation(suspect);
     show("screen-interrogation");
   });
@@ -585,7 +990,44 @@ function gotoAccusation()  { renderAccusationGrid(); show("screen-accusation"); 
 function loadSettings() {
   STATE.apiKey   = localStorage.getItem(LS.apiKey);
   STATE.apiModel = localStorage.getItem(LS.apiModel) || "claude-haiku-4-5-20251001";
-  STATE.lang     = localStorage.getItem(LS.lang) || detectLang();
+  AUDIO.muted    = localStorage.getItem(LS.muted) === "1";
+
+  // URL params take precedence on first load (so shared links work).
+  const params = new URLSearchParams(window.location.search);
+  const langFromUrl = params.get("lang");
+  STATE.lang = (langFromUrl === "en" || langFromUrl === "zh")
+    ? langFromUrl
+    : (localStorage.getItem(LS.lang) || detectLang());
+
+  const diffFromUrl = params.get("difficulty");
+  const validDiffs = ["easy", "normal", "hard"];
+  STATE.difficulty = validDiffs.includes(diffFromUrl)
+    ? diffFromUrl
+    : (validDiffs.includes(localStorage.getItem(LS.difficulty))
+        ? localStorage.getItem(LS.difficulty)
+        : "normal");
+}
+
+function setDifficulty(d) {
+  if (!["easy", "normal", "hard"].includes(d)) return;
+  STATE.difficulty = d;
+  localStorage.setItem(LS.difficulty, d);
+  $$(".difficulty-toggle button").forEach(b => {
+    b.classList.toggle("active", b.dataset.difficulty === d);
+  });
+  const desc = $("#difficulty-desc");
+  if (desc) {
+    const key = "diff.desc" + d.charAt(0).toUpperCase() + d.slice(1);
+    desc.textContent = t(key);
+  }
+}
+
+async function maybeAutoStartFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const seedParam = params.get("seed");
+  if (seedParam == null) return false;
+  await newCase(seedParam);
+  return true;
 }
 
 function detectLang() {
@@ -609,11 +1051,18 @@ function bind() {
         case "save-api-key":  saveApiKey();       break;
         case "clear-api-key": clearApiKey();      break;
         case "ask-ai-send":   askAI();            break;
+        case "share-case":    shareCurrentCase(); break;
+        case "toggle-notes":  toggleNotes();      break;
+        case "open-evidence-picker": openEvidencePicker(); break;
+        case "toggle-audio":  audioToggle();      break;
       }
       return;
     }
     const langBtn = e.target.closest(".lang-toggle button");
     if (langBtn) { setLang(langBtn.dataset.lang); return; }
+
+    const diffBtn = e.target.closest(".difficulty-toggle button");
+    if (diffBtn) { setDifficulty(diffBtn.dataset.difficulty); return; }
 
     const modeBtn = e.target.closest(".mode-btn");
     if (modeBtn) { setMode(modeBtn.dataset.mode); return; }
@@ -635,9 +1084,22 @@ function bind() {
   });
 }
 
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
   loadSettings();
   bind();
   applyI18n();
+  refreshAudioToggle();
+  // Sync difficulty button active state on first paint.
+  $$(".difficulty-toggle button").forEach(b => {
+    b.classList.toggle("active", b.dataset.difficulty === STATE.difficulty);
+  });
+  // First user click anywhere: warm up audio + play one vinyl crackle for atmosphere.
+  document.addEventListener("click", function bootAudio() {
+    document.removeEventListener("click", bootAudio);
+    audioInit();
+    sfxCrackleBurst();
+  }, { once: true });
   show("screen-title");
+  // If the URL has ?seed=, auto-load that case and skip the title screen.
+  await maybeAutoStartFromUrl();
 });
