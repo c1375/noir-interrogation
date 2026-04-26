@@ -1,0 +1,15 @@
+# Game runtime state
+cases/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local-only files (the skill folder itself MUST be committed)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

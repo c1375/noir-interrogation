@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Noir Interrogation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Playfair+Display:wght@700;900&family=Cormorant+Garamond:wght@400;700&family=Noto+Serif+SC:wght@700;900&family=Noto+Sans+SC:wght@400;500&family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="film-grain" aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+
+  <!-- Floating language toggle, persistent across all screens -->
+  <div class="lang-toggle">
+    <button data-lang="en" data-i18n="lang.toggleEn">EN</button>
+    <button data-lang="zh" data-i18n="lang.toggleZh">中</button>
+  </div>
+
+  <main id="app">
+
+    <!-- ========== TITLE SCREEN ========== -->
+    <section id="screen-title" class="screen active">
+      <div class="title-card">
+        <div class="title-stamp" data-i18n="title.confidential">CONFIDENTIAL</div>
+        <h1 class="game-title" data-i18n="title.h1">Noir<br>Interrogation</h1>
+        <p class="tagline" data-i18n="title.tagline">A one-shot detective game.<br>Five suspects. One killer. The script holds the answer.</p>
+        <div class="title-buttons">
+          <button class="btn-primary" data-action="new-case" data-i18n="btn.newCase">NEW CASE</button>
+          <button class="btn-secondary" data-action="open-settings" data-i18n="btn.settings">SETTINGS</button>
+        </div>
+        <p class="title-credit" data-i18n="title.credit">Built as a Claude Code skill, ported to the browser.</p>
+      </div>
+    </section>
+
+    <!-- ========== BRIEFING SCREEN ========== -->
+    <section id="screen-briefing" class="screen">
+      <div class="case-file">
+        <div class="case-header">
+          <span class="case-stamp" data-i18n="briefing.caseFile">CASE FILE</span>
+          <span class="case-id" id="briefing-case-id">#--------</span>
+          <span class="case-status" data-i18n="briefing.statusOpen">OPEN</span>
+        </div>
+        <div class="case-body">
+          <h2 class="case-title" data-i18n="briefing.title">Homicide Report</h2>
+          <dl class="case-fields">
+            <dt data-i18n="briefing.victim">VICTIM</dt><dd id="briefing-victim">—</dd>
+            <dt data-i18n="briefing.scene">SCENE</dt><dd id="briefing-scene">—</dd>
+            <dt data-i18n="briefing.tod">TIME OF DEATH</dt><dd id="briefing-tod">—</dd>
+            <dt data-i18n="briefing.weapon">WEAPON FOUND</dt><dd id="briefing-weapon">—</dd>
+          </dl>
+          <h3 data-i18n="briefing.poi">Persons of Interest</h3>
+          <ul class="suspect-roster" id="briefing-roster"></ul>
+          <div class="commitment-box">
+            <div class="commitment-label" data-i18n="briefing.commitLabel">ANSWER COMMITMENT — SHA-256</div>
+            <div class="commitment-hash" id="briefing-hash">—</div>
+            <div class="commitment-note" data-i18n="briefing.commitNote">
+              The killer's identity was decided at case creation. This hash locks it in. It will be re-verified when you accuse — proof the script can't change the answer based on your questions.
+            </div>
+          </div>
+        </div>
+        <div class="case-actions">
+          <button class="btn-primary" data-action="goto-lineup" data-i18n="btn.beginInterrog">BEGIN INTERROGATION</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== LINEUP SCREEN ========== -->
+    <section id="screen-lineup" class="screen">
+      <div class="lineup-frame">
+        <h2 class="screen-title" data-i18n="lineup.title">The Lineup</h2>
+        <p class="screen-sub" data-i18n="lineup.sub">Pick one to bring into the interrogation room.</p>
+        <div class="lineup-grid" id="lineup-grid"></div>
+        <div class="lineup-actions">
+          <button class="btn-secondary" data-action="goto-briefing" data-i18n="btn.caseFile">CASE FILE</button>
+          <button class="btn-danger" data-action="goto-accusation" data-i18n="btn.makeAccusation">MAKE ACCUSATION</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== INTERROGATION SCREEN ========== -->
+    <section id="screen-interrogation" class="screen">
+      <div class="interrogation-frame">
+        <header class="interrogation-header">
+          <div class="suspect-info">
+            <div class="suspect-name" id="interrog-name">—</div>
+            <div class="suspect-occ" id="interrog-occ">—</div>
+            <div class="suspect-voice" id="interrog-voice">—</div>
+          </div>
+          <button class="btn-icon" data-action="goto-lineup" data-i18n="btn.backToLineup">← LINEUP</button>
+        </header>
+        <div class="conversation" id="conversation"></div>
+        <div class="ask-area" id="ask-area">
+          <div class="mode-toggle">
+            <span class="mode-label" data-i18n="interrog.modeLabel">Mode:</span>
+            <button class="mode-btn active" data-mode="offline">OFFLINE</button>
+            <button class="mode-btn" data-mode="ai">AI</button>
+          </div>
+          <div class="ask-offline" id="ask-offline"></div>
+          <div class="ask-ai" id="ask-ai" hidden>
+            <textarea id="ai-input" rows="2"
+              data-i18n-placeholder="interrog.aiPlaceholder"
+              placeholder="Ask anything... (Shift+Enter for newline)"></textarea>
+            <button class="btn-primary" data-action="ask-ai-send" data-i18n="btn.send">SEND</button>
+            <p class="ai-hint" id="ai-hint" data-i18n="interrog.aiNoKey">Set your Claude API key in Settings to enable AI mode.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== ACCUSATION SCREEN ========== -->
+    <section id="screen-accusation" class="screen">
+      <div class="accusation-frame">
+        <h2 class="screen-title" data-i18n="accusation.title">The Accusation</h2>
+        <p class="screen-sub" data-i18n="accusation.sub">Choose carefully. The killer's hash will be verified.</p>
+        <div class="lineup-grid" id="accusation-grid"></div>
+        <div class="lineup-actions">
+          <button class="btn-secondary" data-action="goto-lineup" data-i18n="btn.backToInterrog">BACK TO INTERROGATION</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== VERDICT SCREEN ========== -->
+    <section id="screen-verdict" class="screen">
+      <div class="verdict-frame">
+        <div class="verdict-stamp" id="verdict-stamp">—</div>
+        <h2 class="screen-title" data-i18n="verdict.title">Verdict</h2>
+        <div class="verdict-body">
+          <p><span data-i18n="verdict.youAccused">You accused:</span> <strong id="verdict-accused">—</strong></p>
+          <p><span data-i18n="verdict.actualKiller">Actual killer:</span> <strong id="verdict-killer">—</strong></p>
+          <p class="verdict-result" id="verdict-result">—</p>
+        </div>
+        <div class="commitment-box">
+          <div class="commitment-label" data-i18n="verdict.hashLabel">HASH VERIFICATION</div>
+          <div class="hash-row">
+            <span data-i18n="verdict.committed">committed:</span>
+            <span class="commitment-hash" id="verdict-committed">—</span>
+          </div>
+          <div class="hash-row">
+            <span data-i18n="verdict.computed">computed:</span>
+            <span class="commitment-hash" id="verdict-computed">—</span>
+          </div>
+          <div class="hash-status" id="verdict-hash-status">—</div>
+        </div>
+        <div class="verdict-actions">
+          <button class="btn-primary" data-action="new-case" data-i18n="btn.newCase">NEW CASE</button>
+          <button class="btn-secondary" data-action="goto-title" data-i18n="btn.mainMenu">MAIN MENU</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ========== SETTINGS MODAL ========== -->
+  <div id="settings-modal" class="modal">
+    <div class="modal-content">
+      <button class="modal-close" data-action="close-settings" aria-label="Close">×</button>
+      <h2 data-i18n="settings.title">Settings</h2>
+
+      <section class="setting-block">
+        <h3 data-i18n="settings.langSection">Language / 语言</h3>
+        <p class="setting-desc" data-i18n="settings.langDesc">
+          Switch between English (1940s American noir) and Chinese (1930s Republican Shanghai noir). The same mechanics; two completely different worlds.
+        </p>
+        <div class="lang-toggle inline">
+          <button data-lang="en" data-i18n="lang.toggleEn">EN</button>
+          <button data-lang="zh" data-i18n="lang.toggleZh">中</button>
+        </div>
+      </section>
+
+      <section class="setting-block">
+        <h3 data-i18n="settings.aiSection">AI Mode (Claude API)</h3>
+        <p class="setting-desc" data-i18n="settings.aiDesc">
+          Bring your own Anthropic API key. The key is stored only in this
+          browser's localStorage and is sent directly to the Anthropic API —
+          never to any other server. AI mode lets you free-text any question
+          to a suspect; the model receives only that suspect's card and stays
+          in character.
+        </p>
+        <label for="api-key" data-i18n="settings.apiKey">API key</label>
+        <input id="api-key" type="password" placeholder="sk-ant-...">
+        <label for="api-model" data-i18n="settings.model">Model</label>
+        <select id="api-model">
+          <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (fast, cheap)</option>
+          <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (richer roleplay)</option>
+        </select>
+        <div class="setting-actions">
+          <button class="btn-primary" data-action="save-api-key" data-i18n="btn.save">SAVE</button>
+          <button class="btn-secondary" data-action="clear-api-key" data-i18n="btn.clear">CLEAR</button>
+        </div>
+        <p class="setting-status" id="api-status" data-i18n="settings.noKey">No key saved.</p>
+      </section>
+
+      <section class="setting-block">
+        <h3 data-i18n="settings.aboutSection">About</h3>
+        <p class="setting-desc" data-i18n="settings.aboutDesc">
+          Noir Interrogation is a one-shot detective game built primarily as a
+          Claude Code skill at <code>.claude/skills/noir-interrogation/</code>.
+          The script in that skill keeps the killer's identity hidden (committed
+          via SHA-256), generates suspect cards, and verifies your accusation.
+          This web port mirrors the same engine in JavaScript.
+        </p>
+      </section>
+    </div>
+  </div>
+
+  <script src="engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
