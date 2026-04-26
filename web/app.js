@@ -33,6 +33,7 @@ const LS = {
   lang:             "noir.lang",
   difficulty:       "noir.difficulty",
   muted:            "noir.muted",
+  tutorialSeen:     "noir.tutorialSeen",
 };
 
 const PROVIDERS = {
@@ -192,6 +193,7 @@ const STRINGS = {
     "title.credit":        "Built as a Claude Code skill, ported to the browser.",
     "title.difficulty":    "DIFFICULTY",
     "btn.newCase":         "NEW CASE",
+    "btn.dailyCase":       "DAILY CASE",
     "btn.settings":        "SETTINGS",
 
     "diff.easy":           "EASY",
@@ -271,6 +273,21 @@ const STRINGS = {
     "verdict.hashOk":        "✓ HASH MATCH — answer was committed at case creation",
     "verdict.hashFail":      "✗ HASH MISMATCH — case file appears tampered",
     "btn.mainMenu":          "MAIN MENU",
+    "btn.revealAll":         "REVEAL ALL CARDS",
+    "btn.hideReveal":        "HIDE REVEAL",
+    "reveal.title":          "Full Case Reveal",
+    "reveal.alibiTrue":      "Alibi (true — corroborated):",
+    "reveal.alibiFalse":     "Alibi (FALSE — fabricated cover story):",
+    "reveal.hiding":         "Was deflecting about:",
+    "reveal.facts":          "Facts they held:",
+    "reveal.witnessTrue":    "[TRUE WITNESS]",
+    "reveal.witnessFalse":   "[FALSE WITNESS]",
+    "reveal.gossip":         "[GOSSIP / MOTIVE LEAK]",
+    "reveal.tag.killer":     "KILLER",
+    "reveal.tag.witness":    "WITNESS",
+    "reveal.tag.falseWitness":"MISLED",
+    "reveal.tag.gossip":     "GOSSIP",
+    "reveal.tag.redHerring": "RED HERRING",
 
     "settings.title":        "Settings",
     "settings.langSection":  "Language / 语言",
@@ -296,6 +313,9 @@ const STRINGS = {
     "lang.toggleZh":         "中",
     "audio.mute":            "Mute sound",
     "audio.unmute":          "Unmute sound",
+    "tutorial.tag":          "FIRST CASE — A QUICK TIP",
+    "tutorial.body":         "Question each suspect about who else they saw that night. One of them is a witness — their statement will contradict the killer's alibi. That contradiction is your case.",
+    "tutorial.ok":           "GOT IT",
   },
 
   zh: {
@@ -305,6 +325,7 @@ const STRINGS = {
     "title.credit":        "原是 Claude Code 上的一个 skill，移植到了浏览器。",
     "title.difficulty":    "难度",
     "btn.newCase":         "新案件",
+    "btn.dailyCase":       "每日案件",
     "btn.settings":        "设置",
 
     "diff.easy":           "简单",
@@ -384,6 +405,21 @@ const STRINGS = {
     "verdict.hashOk":        "✓ 哈希一致 — 答案在案件生成时即已锁定",
     "verdict.hashFail":      "✗ 哈希不符 — 案件文件可能被篡改",
     "btn.mainMenu":          "返回主菜单",
+    "btn.revealAll":         "揭开所有底牌",
+    "btn.hideReveal":        "收起底牌",
+    "reveal.title":          "案件全揭",
+    "reveal.alibiTrue":      "不在场证明（属实，有人证）：",
+    "reveal.alibiFalse":     "不在场证明（撒谎，编造的掩护）：",
+    "reveal.hiding":         "他/她其实在回避：",
+    "reveal.facts":          "他/她持有的线索：",
+    "reveal.witnessTrue":    "[真目击]",
+    "reveal.witnessFalse":   "[假目击]",
+    "reveal.gossip":         "[传闻 / 动机]",
+    "reveal.tag.killer":     "凶手",
+    "reveal.tag.witness":    "目击者",
+    "reveal.tag.falseWitness":"看错人了",
+    "reveal.tag.gossip":     "知情者",
+    "reveal.tag.redHerring": "红鲱鱼",
 
     "settings.title":        "设置",
     "settings.langSection":  "Language / 语言",
@@ -409,6 +445,9 @@ const STRINGS = {
     "lang.toggleZh":         "中",
     "audio.mute":            "静音",
     "audio.unmute":          "开启声音",
+    "tutorial.tag":          "首次开局 — 一句提示",
+    "tutorial.body":         "每个嫌疑人都问一句「那晚你看见还有什么人」。五人之中有一个目击者——他的陈述会与凶手的不在场证明矛盾。那个矛盾就是你破案的关键。",
+    "tutorial.ok":           "知道了",
   },
 };
 
@@ -953,6 +992,14 @@ function showVerdict(v) {
   sfxStamp();
   $("#verdict-accused").textContent = v.accused;
   $("#verdict-killer").textContent  = v.actualKiller;
+  // Reset the reveal panel for a fresh game-over screen
+  const reveal = $("#reveal-all");
+  if (reveal) {
+    reveal.hidden = true;
+    reveal.innerHTML = "";
+  }
+  const tog = $("#reveal-toggle");
+  if (tog) tog.textContent = t("btn.revealAll");
 
   const stamp = $("#verdict-stamp");
   const result = $("#verdict-result");
@@ -981,6 +1028,93 @@ function showVerdict(v) {
 
 function activeKey()    { return STATE.apiKeys[STATE.provider] || null; }
 function activeModel()  { return STATE.apiModels[STATE.provider]; }
+
+function toggleReveal() {
+  if (!STATE.case) return;
+  const panel = $("#reveal-all");
+  const tog = $("#reveal-toggle");
+  if (!panel.hidden) {
+    panel.hidden = true;
+    panel.innerHTML = "";
+    tog.textContent = t("btn.revealAll");
+    return;
+  }
+  renderRevealAll(panel);
+  panel.hidden = false;
+  tog.textContent = t("btn.hideReveal");
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderRevealAll(panel) {
+  const c = STATE.case;
+  panel.innerHTML = "";
+  const header = el("h3", { class: "reveal-header" }, t("reveal.title"));
+  panel.appendChild(header);
+
+  c.suspects.forEach(s => {
+    const card = el("div", { class: "reveal-card" + (s._isKiller ? " killer" : "") });
+
+    const head = el("div", { class: "reveal-card-head" });
+    head.appendChild(el("div", { class: "reveal-name" }, s.name));
+    head.appendChild(el("div", { class: "reveal-occ" }, s.occupation));
+    const tags = roleTags(s);
+    if (tags.length > 0) {
+      const tagBox = el("div", { class: "reveal-tags" });
+      tags.forEach(tg => tagBox.appendChild(el("span", { class: `reveal-tag ${tg.cls}` }, tg.label)));
+      head.appendChild(tagBox);
+    }
+    card.appendChild(head);
+
+    // Alibi block
+    const alibi = el("div", { class: "reveal-block" });
+    alibi.appendChild(el("div", { class: "reveal-label" },
+      t(s._isKiller ? "reveal.alibiFalse" : "reveal.alibiTrue")));
+    alibi.appendChild(el("div", { class: "reveal-text" }, '"' + s.claimedAlibi + '"'));
+    card.appendChild(alibi);
+
+    // What they were really hiding
+    if (s.thingsToHide && s.thingsToHide.length) {
+      const hide = el("div", { class: "reveal-block" });
+      hide.appendChild(el("div", { class: "reveal-label" }, t("reveal.hiding")));
+      const ul = el("ul", { class: "reveal-list" });
+      s.thingsToHide.forEach(h => ul.appendChild(el("li", {}, h)));
+      hide.appendChild(ul);
+      card.appendChild(hide);
+    }
+
+    // Facts they held
+    if (s.knowsFacts && s.knowsFacts.length) {
+      const facts = el("div", { class: "reveal-block" });
+      facts.appendChild(el("div", { class: "reveal-label" }, t("reveal.facts")));
+      const ul = el("ul", { class: "reveal-list" });
+      s.knowsFacts.forEach(f => {
+        const tagText = f.type === "witness"
+          ? (f._false ? t("reveal.witnessFalse") : t("reveal.witnessTrue"))
+          : t("reveal.gossip");
+        const li = el("li", {});
+        li.appendChild(el("span", { class: "reveal-fact-tag " + (f._false ? "false" : f.type) }, tagText));
+        li.appendChild(document.createTextNode(" " + f.text));
+        ul.appendChild(li);
+      });
+      facts.appendChild(ul);
+      card.appendChild(facts);
+    }
+
+    panel.appendChild(card);
+  });
+}
+
+function roleTags(suspect) {
+  const tags = [];
+  if (suspect._isKiller) tags.push({ cls: "killer", label: t("reveal.tag.killer") });
+  for (const f of (suspect.knowsFacts || [])) {
+    if (f.type === "witness" && f._false) tags.push({ cls: "false", label: t("reveal.tag.falseWitness") });
+    else if (f.type === "witness")        tags.push({ cls: "witness", label: t("reveal.tag.witness") });
+    else if (f.type === "motive")         tags.push({ cls: "gossip", label: t("reveal.tag.gossip") });
+  }
+  if (tags.length === 0) tags.push({ cls: "redherring", label: t("reveal.tag.redHerring") });
+  return tags;
+}
 
 function openCaseModal() {
   if (!STATE.case) return;
@@ -1104,7 +1238,36 @@ function updateApiStatus(justSaved = false) {
 
 /* ============================== bootstrap ============================== */
 
+function showTutorial() {
+  $("#tutorial-hint").hidden = false;
+}
+
+function dismissTutorial() {
+  $("#tutorial-hint").hidden = true;
+  localStorage.setItem(LS.tutorialSeen, "1");
+}
+
+function dailySeedString() {
+  // Date in UTC so everyone playing the same calendar day gets the same case.
+  const d = new Date();
+  return `daily-${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
+}
+
+async function dailyCase() {
+  // Daily case is deterministic: same date + same lang + same difficulty
+  // = same case for everyone. Force NORMAL difficulty so the daily target
+  // is comparable across players.
+  const prevDifficulty = STATE.difficulty;
+  STATE.difficulty = "normal";
+  await newCase(dailySeedString());
+  STATE.difficulty = prevDifficulty;
+}
+
 async function newCase(seed = null) {
+  // First-time players: show a one-line tip about the deduction loop.
+  if (!localStorage.getItem(LS.tutorialSeen)) {
+    showTutorial();
+  }
   STATE.case = await generateCase(STATE.lang, seed, STATE.difficulty);
   STATE.conversations = {};
   STATE.notes = {};
@@ -1240,6 +1403,7 @@ function bind() {
       const action = btn.dataset.action;
       switch (action) {
         case "new-case":      newCase();          break;
+        case "daily-case":    dailyCase();        break;
         case "goto-lineup":   gotoLineup();       break;
         case "goto-briefing": gotoBriefing();     break;
         case "goto-title":    gotoTitle();        break;
@@ -1256,6 +1420,8 @@ function bind() {
         case "set-provider":  setProvider(btn.dataset.provider); break;
         case "open-case-modal":  openCaseModal();  break;
         case "close-case-modal": closeCaseModal(); break;
+        case "toggle-reveal":    toggleReveal();   break;
+        case "dismiss-tutorial": dismissTutorial(); break;
       }
       return;
     }

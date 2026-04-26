@@ -45,6 +45,7 @@
 
         <div class="title-buttons">
           <button class="btn-primary" data-action="new-case" data-i18n="btn.newCase">NEW CASE</button>
+          <button class="btn-secondary" data-action="daily-case" data-i18n="btn.dailyCase">DAILY CASE</button>
           <button class="btn-secondary" data-action="open-settings" data-i18n="btn.settings">SETTINGS</button>
         </div>
         <p class="title-credit" data-i18n="title.credit">Built as a Claude Code skill, ported to the browser.</p>
@@ -192,11 +193,26 @@
         <div class="verdict-actions">
           <button class="btn-primary" data-action="new-case" data-i18n="btn.newCase">NEW CASE</button>
           <button class="btn-secondary" data-action="goto-title" data-i18n="btn.mainMenu">MAIN MENU</button>
+          <button class="btn-secondary" data-action="toggle-reveal" id="reveal-toggle"
+                  data-i18n="btn.revealAll">REVEAL ALL CARDS</button>
         </div>
+        <div class="reveal-all" id="reveal-all" hidden></div>
       </div>
     </section>
 
   </main>
+
+  <!-- ========== TUTORIAL HINT (first-play only) ========== -->
+  <div id="tutorial-hint" class="tutorial-hint" hidden>
+    <div class="tutorial-content">
+      <div class="tutorial-header">
+        <span class="tutorial-tag" data-i18n="tutorial.tag">FIRST CASE — A QUICK TIP</span>
+        <button class="tutorial-close" data-action="dismiss-tutorial" aria-label="Close">×</button>
+      </div>
+      <p data-i18n="tutorial.body">Question each suspect about who else they saw that night. One of them is a witness — their statement will contradict the killer's alibi. That contradiction is your case.</p>
+      <button class="btn-primary tutorial-ok" data-action="dismiss-tutorial" data-i18n="tutorial.ok">GOT IT</button>
+    </div>
+  </div>
 
   <!-- ========== CASE FILE MODAL (peek without leaving interrogation) ========== -->
   <div id="case-modal" class="modal">

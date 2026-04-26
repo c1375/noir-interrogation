@@ -1136,9 +1136,183 @@ button:disabled {
 
 .verdict-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  gap: 16px;
+  gap: 12px;
   margin-top: 30px;
+}
+
+.reveal-all {
+  margin-top: 30px;
+  padding-top: 24px;
+  border-top: 2px solid var(--ink);
+  text-align: left;
+}
+
+.reveal-header {
+  font-family: "Playfair Display", serif;
+  font-size: 1.4rem;
+  text-align: center;
+  margin-bottom: 18px;
+  letter-spacing: 0.05em;
+  color: var(--ink);
+}
+
+.reveal-card {
+  background: var(--paper-warm);
+  border: 1px solid var(--paper-shadow);
+  border-left: 4px solid var(--brass);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.reveal-card.killer {
+  border-left-color: var(--blood);
+  background: rgba(139, 26, 26, 0.08);
+}
+
+.reveal-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--paper-shadow);
+}
+
+.reveal-name {
+  font-family: "Playfair Display", serif;
+  font-size: 1.05rem;
+  font-weight: bold;
+  color: var(--ink);
+}
+
+.reveal-occ {
+  color: var(--ink-soft);
+  font-style: italic;
+  font-size: 0.88rem;
+}
+
+.reveal-tags {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.reveal-tag {
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+  padding: 2px 8px;
+  font-weight: bold;
+  text-transform: uppercase;
+  background: var(--ink-soft);
+  color: var(--paper);
+}
+
+.reveal-tag.killer    { background: var(--blood);  color: var(--paper); }
+.reveal-tag.witness   { background: #2a6b2a;       color: var(--paper); }
+.reveal-tag.false     { background: #9d6c00;       color: var(--paper); }
+.reveal-tag.gossip    { background: var(--brass);  color: var(--ink); }
+.reveal-tag.redherring{ background: var(--ink-fade); color: var(--paper); }
+
+.reveal-block {
+  margin: 8px 0;
+  font-size: 0.9rem;
+}
+
+.reveal-label {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  font-weight: bold;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.reveal-text {
+  color: var(--ink);
+  font-style: italic;
+}
+
+.reveal-list {
+  margin: 4px 0 0;
+  padding-left: 20px;
+  color: var(--ink);
+}
+
+.reveal-list li {
+  margin-bottom: 4px;
+}
+
+.reveal-fact-tag {
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  font-weight: bold;
+  padding: 1px 6px;
+  margin-right: 6px;
+}
+.reveal-fact-tag.witness { background: #2a6b2a; color: var(--paper); }
+.reveal-fact-tag.motive  { background: var(--brass); color: var(--ink); }
+.reveal-fact-tag.false   { background: #9d6c00; color: var(--paper); }
+
+/* ============== Tutorial hint ============== */
+
+.tutorial-hint {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 180;
+  width: min(440px, 92vw);
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  box-shadow: var(--shadow);
+  animation: fadeIn 0.4s ease-out;
+}
+
+.tutorial-content {
+  padding: 18px 22px 16px;
+}
+
+.tutorial-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.tutorial-tag {
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  font-weight: bold;
+  color: var(--blood);
+  border: 2px solid var(--blood);
+  padding: 2px 8px;
+}
+
+.tutorial-close {
+  background: transparent;
+  border: none;
+  color: var(--ink-soft);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 6px;
+}
+.tutorial-close:hover { color: var(--ink); }
+
+.tutorial-content p {
+  margin: 0 0 14px;
+  color: var(--ink);
+  line-height: 1.55;
+  font-size: 0.95rem;
+}
+
+.tutorial-ok {
+  width: 100%;
+  padding: 8px 18px;
+  font-size: 0.85rem;
 }
 
 /* ============== Settings modal ============== */
