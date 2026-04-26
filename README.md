@@ -112,7 +112,11 @@ python -m http.server 8000     # or any static server
 ### OFFLINE vs AI mode
 
 - **OFFLINE** (default, no setup) — each suspect has a menu of preset questions. Responses are templated per occupation, with the same hidden-state guarantees as the Python skill (random killer, witness clue, hash commitment). The killer becomes notably more evasive when pressed on the time of death.
-- **AI** (BYOK) — open Settings, paste your Claude API key (`sk-ant-...`). The browser then calls the Anthropic API directly with the suspect's card as a `system` prompt and conversation history as `messages`. Free-text any question; the model stays in character. The key is stored only in `localStorage` and is sent only to `api.anthropic.com`.
+- **AI** (BYOK) — open Settings, pick a provider, paste your API key. Two providers are supported:
+  - **Anthropic Claude** (paid; `sk-ant-...` key from console.anthropic.com)
+  - **Google Gemini** (has a generous free tier; `AIza...` key from aistudio.google.com)
+
+  The browser then calls the selected provider's API directly with the suspect's card as a system prompt and conversation history as messages. Free-text any question; the model stays in character. The key is stored only in `localStorage` and is sent only to that provider's API.
 
 Each mode preserves the load-bearing properties: the killer's identity is hashed at case creation; the AI only ever sees one suspect's card at a time; the verdict screen verifies the original hash matches.
 

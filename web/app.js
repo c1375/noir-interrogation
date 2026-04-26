@@ -12,19 +12,50 @@ const STATE = {
   notesActiveTab: null,       // suspect name shown in panel
   evidence: [],               // [{source, text, namedSuspect, isFalse}]
   evidencePickerOpen: false,
-  apiKey: null,
-  apiModel: "claude-haiku-4-5-20251001",
+  provider: "anthropic",      // "anthropic" | "google"
+  apiKeys:   { anthropic: null, google: null },
+  apiModels: { anthropic: "claude-haiku-4-5-20251001", google: "gemini-2.5-flash" },
   mode: "offline",            // "offline" | "ai"
   lang: "en",                 // "en" | "zh"
   difficulty: "normal",       // "easy" | "normal" | "hard"
 };
 
 const LS = {
-  apiKey:     "noir.apiKey",
-  apiModel:   "noir.apiModel",
-  lang:       "noir.lang",
-  difficulty: "noir.difficulty",
-  muted:      "noir.muted",
+  // legacy single-key (migrated to anthropic)
+  legacyApiKey:     "noir.apiKey",
+  legacyApiModel:   "noir.apiModel",
+  // current
+  provider:         "noir.provider",
+  anthropicKey:     "noir.anthropic.key",
+  anthropicModel:   "noir.anthropic.model",
+  googleKey:        "noir.google.key",
+  googleModel:      "noir.google.model",
+  lang:             "noir.lang",
+  difficulty:       "noir.difficulty",
+  muted:            "noir.muted",
+};
+
+const PROVIDERS = {
+  anthropic: {
+    label: "Anthropic Claude",
+    placeholder: "sk-ant-...",
+    docUrl: "https://console.anthropic.com/",
+    free: false,
+    models: [
+      { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5 (fast, cheap)" },
+      { value: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6 (richer)" },
+    ],
+  },
+  google: {
+    label: "Google Gemini",
+    placeholder: "AIza...",
+    docUrl: "https://aistudio.google.com/apikey",
+    free: true,
+    models: [
+      { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (free tier)" },
+      { value: "gemini-2.5-pro",   label: "Gemini 2.5 Pro (free tier, slower)" },
+    ],
+  },
 };
 
 /* ============================== Audio (Web Audio API) ============================== */
@@ -244,8 +275,13 @@ const STRINGS = {
     "settings.title":        "Settings",
     "settings.langSection":  "Language / 语言",
     "settings.langDesc":     "Switch between English (1940s American noir) and Chinese (1930s Republican Shanghai noir). The same mechanics; two completely different worlds.",
-    "settings.aiSection":    "AI Mode (Claude API)",
-    "settings.aiDesc":       "Bring your own Anthropic API key. The key is stored only in this browser's localStorage and is sent directly to the Anthropic API — never to any other server. AI mode lets you free-text any question to a suspect; the model receives only that suspect's card and stays in character.",
+    "settings.aiSection":    "AI Mode",
+    "settings.aiDesc":       "Bring your own LLM API key. The key is stored only in this browser's localStorage and is sent directly to the provider — never to any other server. AI mode lets you free-text any question to a suspect; the model receives only that suspect's card and stays in character.",
+    "settings.provider":     "Provider",
+    "settings.paid":         "paid",
+    "settings.freeTier":     "free tier",
+    "settings.getKeyAnthropic": "Get an Anthropic API key →",
+    "settings.getKeyGoogle":    "Get a free Google AI Studio key →",
     "settings.apiKey":       "API key",
     "settings.model":        "Model",
     "btn.save":              "SAVE",
@@ -352,8 +388,13 @@ const STRINGS = {
     "settings.title":        "设置",
     "settings.langSection":  "Language / 语言",
     "settings.langDesc":     "在「英文（1940 年代美国 noir）」和「中文（1930 年代民国上海 noir）」之间切换。机制完全相同，两个完全不同的世界。",
-    "settings.aiSection":    "AI 模式（Claude API）",
-    "settings.aiDesc":       "自带您的 Anthropic API 密钥。密钥只保存在本浏览器的 localStorage 中，且仅会直接发送至 Anthropic API，不经任何其他服务器。开启 AI 模式后您可对嫌疑人自由提问；模型只看到该嫌疑人的卡片，并坚持角色不出戏。",
+    "settings.aiSection":    "AI 模式",
+    "settings.aiDesc":       "自带您的 LLM API 密钥。密钥仅保存在本浏览器的 localStorage，且仅直接发送至所选提供商，不经任何其他服务器。开启 AI 模式后您可自由提问；模型只看到当前嫌疑人的卡片，并坚持角色不出戏。",
+    "settings.provider":     "提供商",
+    "settings.paid":         "付费",
+    "settings.freeTier":     "有免费额度",
+    "settings.getKeyAnthropic": "获取 Anthropic API key →",
+    "settings.getKeyGoogle":    "免费获取 Google AI Studio key →",
     "settings.apiKey":       "API 密钥",
     "settings.model":        "模型",
     "btn.save":              "保存",
@@ -568,8 +609,8 @@ function confrontWith(evidence) {
 
   const thinking = addBubble("thinking", "", suspect.name);
 
-  if (STATE.mode === "ai" && STATE.apiKey) {
-    callClaude(suspect, framing).then(reply => {
+  if (STATE.mode === "ai" && activeKey()) {
+    callLLM(suspect, framing).then(reply => {
       thinking.remove();
       addBubble("suspect", reply, suspect.name);
       pushTurn("suspect", reply);
@@ -608,12 +649,14 @@ function setMode(mode) {
   $("#ask-ai").hidden       = (mode !== "ai");
   if (mode === "ai") {
     const hint = $("#ai-hint");
-    if (!STATE.apiKey) {
+    const key = activeKey();
+    if (!key) {
       hint.textContent = t("interrog.aiNoKey");
       hint.style.color = "var(--blood)";
       $("#ai-input").disabled = true;
     } else {
-      hint.textContent = t("interrog.aiActive", STATE.apiModel);
+      const provLabel = PROVIDERS[STATE.provider].label;
+      hint.textContent = t("interrog.aiActive", `${provLabel} · ${activeModel()}`);
       hint.style.color = "var(--paper-warm)";
       $("#ai-input").disabled = false;
     }
@@ -765,7 +808,7 @@ async function askAI() {
   const input = $("#ai-input");
   const question = input.value.trim();
   if (!question) return;
-  if (!STATE.apiKey) {
+  if (!activeKey()) {
     alert(t("interrog.aiSetKeyFirst"));
     return;
   }
@@ -779,7 +822,7 @@ async function askAI() {
   const thinking = addBubble("thinking", "", suspect.name);
 
   try {
-    const reply = await callClaude(suspect, question);
+    const reply = await callLLM(suspect, question);
     thinking.remove();
     addBubble("suspect", reply, suspect.name);
     pushTurn("suspect", reply);
@@ -799,6 +842,11 @@ async function askAI() {
   }
 }
 
+async function callLLM(suspect, userQuestion) {
+  if (STATE.provider === "google") return callGemini(suspect, userQuestion);
+  return callClaude(suspect, userQuestion);
+}
+
 async function callClaude(suspect, userQuestion) {
   const system = buildSystemPromptForSuspect(STATE.case, suspect);
   const history = (STATE.conversations[suspect.name] || []).filter(
@@ -814,12 +862,12 @@ async function callClaude(suspect, userQuestion) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": STATE.apiKey,
+      "x-api-key": STATE.apiKeys.anthropic,
       "anthropic-version": "2023-06-01",
       "anthropic-dangerous-direct-browser-access": "true",
     },
     body: JSON.stringify({
-      model: STATE.apiModel,
+      model: STATE.apiModels.anthropic,
       max_tokens: 400,
       system,
       messages,
@@ -833,12 +881,61 @@ async function callClaude(suspect, userQuestion) {
       const j = JSON.parse(text);
       detail = j.error?.message || text;
     } catch (_) {}
-    throw new Error(`API ${res.status}: ${detail.slice(0, 200)}`);
+    throw new Error(`Anthropic ${res.status}: ${detail.slice(0, 200)}`);
   }
   const data = await res.json();
   const blocks = data.content || [];
   const text = blocks.filter(b => b.type === "text").map(b => b.text).join("");
   return text.trim() || "[silence]";
+}
+
+async function callGemini(suspect, userQuestion) {
+  const system = buildSystemPromptForSuspect(STATE.case, suspect);
+  const history = (STATE.conversations[suspect.name] || []).filter(
+    t => t.role === "detective" || t.role === "suspect"
+  );
+  // Gemini's chat format: contents alternates user/model messages.
+  const contents = [];
+  for (const turn of history) {
+    contents.push({
+      role: turn.role === "detective" ? "user" : "model",
+      parts: [{ text: turn.content }],
+    });
+  }
+
+  const model = STATE.apiModels.google;
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/"
+            + encodeURIComponent(model) + ":generateContent?key="
+            + encodeURIComponent(STATE.apiKeys.google);
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents,
+      generationConfig: { maxOutputTokens: 400, temperature: 0.9 },
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    let detail = text;
+    try {
+      const j = JSON.parse(text);
+      detail = j.error?.message || text;
+    } catch (_) {}
+    throw new Error(`Gemini ${res.status}: ${detail.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  const reason = data.candidates?.[0]?.finishReason;
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  const text = parts.map(p => p.text || "").join("");
+  if (!text.trim()) {
+    if (reason === "SAFETY") throw new Error("Gemini blocked the response (safety filter).");
+    return "[silence]";
+  }
+  return text.trim();
 }
 
 /* ============================== accusation + verdict ============================== */
@@ -882,9 +979,26 @@ function showVerdict(v) {
 
 /* ============================== settings ============================== */
 
+function activeKey()    { return STATE.apiKeys[STATE.provider] || null; }
+function activeModel()  { return STATE.apiModels[STATE.provider]; }
+
 function openSettings() {
-  $("#api-key").value = STATE.apiKey || "";
-  $("#api-model").value = STATE.apiModel;
+  // Render the provider-specific model dropdown options first
+  for (const provKey of Object.keys(PROVIDERS)) {
+    const sel = $(`#${provKey}-model`);
+    if (sel && sel.options.length === 0) {
+      PROVIDERS[provKey].models.forEach(m => {
+        const opt = document.createElement("option");
+        opt.value = m.value;
+        opt.textContent = m.label;
+        sel.appendChild(opt);
+      });
+    }
+    const keyEl = $(`#${provKey}-key`);
+    if (keyEl) keyEl.value = STATE.apiKeys[provKey] || "";
+    if (sel) sel.value = STATE.apiModels[provKey];
+  }
+  setProviderUI(STATE.provider);
   updateApiStatus();
   $("#settings-modal").classList.add("active");
 }
@@ -893,33 +1007,66 @@ function closeSettings() {
   $("#settings-modal").classList.remove("active");
 }
 
+function setProvider(provider) {
+  if (!PROVIDERS[provider]) return;
+  STATE.provider = provider;
+  localStorage.setItem(LS.provider, provider);
+  setProviderUI(provider);
+  updateApiStatus();
+  setMode(STATE.mode);  // refresh AI hint
+}
+
+function setProviderUI(provider) {
+  $$(".provider-toggle button").forEach(b => {
+    b.classList.toggle("active", b.dataset.provider === provider);
+  });
+  $$(".provider-config").forEach(c => {
+    c.hidden = c.dataset.provider !== provider;
+  });
+}
+
 function saveApiKey() {
-  const key = $("#api-key").value.trim();
-  const model = $("#api-model").value;
+  const provider = STATE.provider;
+  const keyEl = $(`#${provider}-key`);
+  const modelEl = $(`#${provider}-model`);
+  const key = keyEl.value.trim();
+  const model = modelEl.value;
   if (!key) {
     alert(t("interrog.aiSetKeyFirst"));
     return;
   }
-  STATE.apiKey = key;
-  STATE.apiModel = model;
-  localStorage.setItem(LS.apiKey, key);
-  localStorage.setItem(LS.apiModel, model);
+  STATE.apiKeys[provider] = key;
+  STATE.apiModels[provider] = model;
+  if (provider === "anthropic") {
+    localStorage.setItem(LS.anthropicKey, key);
+    localStorage.setItem(LS.anthropicModel, model);
+  } else {
+    localStorage.setItem(LS.googleKey, key);
+    localStorage.setItem(LS.googleModel, model);
+  }
   updateApiStatus(true);
+  setMode(STATE.mode);  // refresh AI hint
 }
 
 function clearApiKey() {
-  STATE.apiKey = null;
-  localStorage.removeItem(LS.apiKey);
-  $("#api-key").value = "";
+  const provider = STATE.provider;
+  STATE.apiKeys[provider] = null;
+  if (provider === "anthropic") localStorage.removeItem(LS.anthropicKey);
+  else                          localStorage.removeItem(LS.googleKey);
+  const keyEl = $(`#${provider}-key`);
+  if (keyEl) keyEl.value = "";
   updateApiStatus();
+  setMode(STATE.mode);
 }
 
 function updateApiStatus(justSaved = false) {
   const s = $("#api-status");
   if (!s) return;
-  if (STATE.apiKey) {
-    const masked = STATE.apiKey.slice(0, 10) + "..." + STATE.apiKey.slice(-4);
-    s.textContent = t("settings.keySet", masked, justSaved);
+  const key = activeKey();
+  if (key) {
+    const masked = key.slice(0, 6) + "..." + key.slice(-4);
+    const provLabel = PROVIDERS[STATE.provider].label;
+    s.textContent = t("settings.keySet", masked, justSaved) + " (" + provLabel + ")";
     s.className = "setting-status ok";
   } else {
     s.textContent = t("settings.noKey");
@@ -988,8 +1135,31 @@ function gotoTitle()       { show("screen-title"); }
 function gotoAccusation()  { renderAccusationGrid(); show("screen-accusation"); }
 
 function loadSettings() {
-  STATE.apiKey   = localStorage.getItem(LS.apiKey);
-  STATE.apiModel = localStorage.getItem(LS.apiModel) || "claude-haiku-4-5-20251001";
+  // Provider config + per-provider keys/models
+  STATE.provider = localStorage.getItem(LS.provider) || "anthropic";
+  if (!PROVIDERS[STATE.provider]) STATE.provider = "anthropic";
+
+  STATE.apiKeys.anthropic = localStorage.getItem(LS.anthropicKey);
+  STATE.apiKeys.google    = localStorage.getItem(LS.googleKey);
+  STATE.apiModels.anthropic = localStorage.getItem(LS.anthropicModel) || "claude-haiku-4-5-20251001";
+  STATE.apiModels.google    = localStorage.getItem(LS.googleModel)    || "gemini-2.5-flash";
+
+  // One-time migration: legacy single-key noir.apiKey was Anthropic.
+  const legacyKey = localStorage.getItem(LS.legacyApiKey);
+  const legacyModel = localStorage.getItem(LS.legacyApiModel);
+  if (legacyKey && !STATE.apiKeys.anthropic) {
+    STATE.apiKeys.anthropic = legacyKey;
+    localStorage.setItem(LS.anthropicKey, legacyKey);
+  }
+  if (legacyModel && !localStorage.getItem(LS.anthropicModel)) {
+    STATE.apiModels.anthropic = legacyModel;
+    localStorage.setItem(LS.anthropicModel, legacyModel);
+  }
+  if (legacyKey || legacyModel) {
+    localStorage.removeItem(LS.legacyApiKey);
+    localStorage.removeItem(LS.legacyApiModel);
+  }
+
   AUDIO.muted    = localStorage.getItem(LS.muted) === "1";
 
   // URL params take precedence on first load (so shared links work).
@@ -1055,6 +1225,7 @@ function bind() {
         case "toggle-notes":  toggleNotes();      break;
         case "open-evidence-picker": openEvidencePicker(); break;
         case "toggle-audio":  audioToggle();      break;
+        case "set-provider":  setProvider(btn.dataset.provider); break;
       }
       return;
     }

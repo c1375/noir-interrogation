@@ -1219,6 +1219,78 @@ button:disabled {
   color: var(--ink);
 }
 
+.provider-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.provider-toggle button {
+  background: var(--paper-warm);
+  color: var(--ink-soft);
+  border: 2px solid var(--paper-shadow);
+  padding: 10px 12px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.provider-toggle button:hover {
+  background: var(--paper);
+  border-color: var(--ink-soft);
+}
+
+.provider-toggle button.active {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+.provider-name {
+  font-weight: bold;
+  font-size: 0.95rem;
+}
+
+.provider-badge {
+  display: inline-block;
+  width: fit-content;
+  font-size: 0.68rem;
+  letter-spacing: 0.15em;
+  padding: 1px 8px;
+  background: var(--blood);
+  color: var(--paper);
+  text-transform: uppercase;
+}
+
+.provider-badge.free {
+  background: #2a6b2a;
+}
+
+.provider-toggle button.active .provider-badge {
+  filter: brightness(1.15);
+}
+
+.provider-config {
+  margin-bottom: 4px;
+}
+
+.provider-link {
+  margin: 10px 0 0;
+  font-size: 0.82rem;
+}
+.provider-link a {
+  color: var(--brass-dim);
+  text-decoration: underline;
+}
+.provider-link a:hover {
+  color: var(--blood);
+}
+
 .setting-block input:focus,
 .setting-block select:focus {
   outline: none;

@@ -215,21 +215,48 @@
       </section>
 
       <section class="setting-block">
-        <h3 data-i18n="settings.aiSection">AI Mode (Claude API)</h3>
+        <h3 data-i18n="settings.aiSection">AI Mode</h3>
         <p class="setting-desc" data-i18n="settings.aiDesc">
-          Bring your own Anthropic API key. The key is stored only in this
-          browser's localStorage and is sent directly to the Anthropic API —
-          never to any other server. AI mode lets you free-text any question
-          to a suspect; the model receives only that suspect's card and stays
-          in character.
+          Bring your own LLM API key. The key is stored only in this browser's
+          localStorage and is sent directly to the provider — never to any
+          other server. AI mode lets you free-text any question; the model
+          receives only that suspect's card and stays in character.
         </p>
-        <label for="api-key" data-i18n="settings.apiKey">API key</label>
-        <input id="api-key" type="password" placeholder="sk-ant-...">
-        <label for="api-model" data-i18n="settings.model">Model</label>
-        <select id="api-model">
-          <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (fast, cheap)</option>
-          <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (richer roleplay)</option>
-        </select>
+
+        <label data-i18n="settings.provider">Provider</label>
+        <div class="provider-toggle">
+          <button data-action="set-provider" data-provider="anthropic">
+            <span class="provider-name">Anthropic Claude</span>
+            <span class="provider-badge" data-i18n="settings.paid">paid</span>
+          </button>
+          <button data-action="set-provider" data-provider="google">
+            <span class="provider-name">Google Gemini</span>
+            <span class="provider-badge free" data-i18n="settings.freeTier">free tier</span>
+          </button>
+        </div>
+
+        <div class="provider-config" data-provider="anthropic">
+          <label for="anthropic-key" data-i18n="settings.apiKey">API key</label>
+          <input id="anthropic-key" type="password" placeholder="sk-ant-...">
+          <label for="anthropic-model" data-i18n="settings.model">Model</label>
+          <select id="anthropic-model"></select>
+          <p class="provider-link">
+            <a href="https://console.anthropic.com/" target="_blank" rel="noopener"
+               data-i18n="settings.getKeyAnthropic">Get an Anthropic API key →</a>
+          </p>
+        </div>
+
+        <div class="provider-config" data-provider="google" hidden>
+          <label for="google-key" data-i18n="settings.apiKey">API key</label>
+          <input id="google-key" type="password" placeholder="AIza...">
+          <label for="google-model" data-i18n="settings.model">Model</label>
+          <select id="google-model"></select>
+          <p class="provider-link">
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener"
+               data-i18n="settings.getKeyGoogle">Get a free Google AI Studio key →</a>
+          </p>
+        </div>
+
         <div class="setting-actions">
           <button class="btn-primary" data-action="save-api-key" data-i18n="btn.save">SAVE</button>
           <button class="btn-secondary" data-action="clear-api-key" data-i18n="btn.clear">CLEAR</button>
