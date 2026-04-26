@@ -367,6 +367,42 @@ button:disabled {
   margin-bottom: 24px;
 }
 
+.briefing-opener {
+  background: var(--paper-warm);
+  border-left: 3px solid var(--blood);
+  padding: 14px 18px;
+  margin-bottom: 24px;
+  font-style: italic;
+  color: var(--ink);
+  line-height: 1.7;
+  font-size: 0.96rem;
+}
+.briefing-opener p { margin: 0; }
+.briefing-opener[hidden] { display: none; }
+
+.narrative-loading {
+  color: var(--ink-fade);
+  font-style: italic;
+}
+
+.reveal-monologue {
+  background: var(--ink);
+  color: var(--paper);
+  border-left: 3px solid var(--brass);
+  padding: 18px 22px;
+  margin-bottom: 24px;
+  line-height: 1.7;
+  font-family: "Special Elite", monospace;
+  font-size: 0.95rem;
+}
+.reveal-monologue p { margin: 0 0 0.7em; }
+.reveal-monologue p:last-child { margin-bottom: 0; }
+.reveal-monologue .narrative-loading { color: var(--paper-warm); }
+
+html[data-lang="zh"] .reveal-monologue {
+  font-family: "Noto Serif SC", serif;
+}
+
 .case-fields {
   display: grid;
   grid-template-columns: 160px 1fr;

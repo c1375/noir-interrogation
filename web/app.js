@@ -18,6 +18,7 @@ const STATE = {
   mode: "offline",            // "offline" | "ai"
   lang: "en",                 // "en" | "zh"
   difficulty: "normal",       // "easy" | "normal" | "hard"
+  narrativeOn: true,          // LLM-generated opener + reveal monologue
 };
 
 const LS = {
@@ -34,6 +35,7 @@ const LS = {
   difficulty:       "noir.difficulty",
   muted:            "noir.muted",
   ambient:          "noir.ambient",
+  narrative:        "noir.narrative",
   tutorialSeen:     "noir.tutorialSeen",
   stats:            "noir.stats",
 };
@@ -162,6 +164,12 @@ function ambientToggle() {
   $$("[data-action=toggle-ambient]").forEach(b => b.classList.toggle("active", AUDIO.ambientOn));
   if (AUDIO.ambientOn && !AUDIO.muted) startAmbient();
   else stopAmbient();
+}
+
+function narrativeToggle() {
+  STATE.narrativeOn = !STATE.narrativeOn;
+  localStorage.setItem(LS.narrative, STATE.narrativeOn ? "1" : "0");
+  $$("[data-action=toggle-narrative]").forEach(b => b.classList.toggle("active", STATE.narrativeOn));
 }
 
 function refreshAudioToggle() {
@@ -512,6 +520,10 @@ const STRINGS = {
     "settings.audioSection": "Audio",
     "settings.audioDesc":    "The audio toggle in the top-right corner mutes / unmutes sound effects. Ambient background (rain + faint piano) is opt-in below.",
     "settings.ambientLabel": "Ambient (rain + piano)",
+    "settings.narrativeLabel":"LLM narrative (opener + reveal monologue)",
+    "settings.narrativeDesc": "When enabled, the briefing gains an atmospheric scene-setter and the verdict reveals a noir-style closing monologue tying motive, witness, and red herrings together. Adds 2 small API calls per case.",
+    "narrative.openerLoading":"…(narrator clearing his throat)…",
+    "narrative.revealLoading":"…(detective lighting a final cigarette)…",
   },
 
   zh: {
@@ -685,6 +697,10 @@ const STRINGS = {
     "settings.audioSection": "音频",
     "settings.audioDesc":    "右上角的音频按钮控制音效的开关。下面的背景环境音（雨声 + 远处钢琴）需要单独打开。",
     "settings.ambientLabel": "背景环境音（雨声 + 钢琴）",
+    "settings.narrativeLabel":"LLM 叙事（开场段 + 揭幕独白）",
+    "settings.narrativeDesc": "开启后，案情简报上方增加一段氛围开场，揭幕时多一段 noir 风格的侦探独白，把动机/目击/红鲱鱼串成完整真相。每局多 2 次小型 API 调用。",
+    "narrative.openerLoading":"……（旁白正在清嗓子）……",
+    "narrative.revealLoading":"……（侦探正点上最后一支烟）……",
   },
 };
 
@@ -758,6 +774,15 @@ function show(screenId) {
   window.scrollTo(0, 0);
 }
 
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function el(tag, props = {}, ...children) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
@@ -778,6 +803,29 @@ function el(tag, props = {}, ...children) {
 
 function renderBriefing() {
   const c = STATE.case;
+  // Kick off LLM-generated opening narrative if AI is enabled.
+  const openerEl = $("#briefing-opener");
+  if (openerEl) {
+    if (narrativeEnabled()) {
+      openerEl.hidden = false;
+      if (c.narrativeOpener) {
+        openerEl.innerHTML = `<p>${escapeHtml(c.narrativeOpener)}</p>`;
+      } else {
+        openerEl.innerHTML = `<p class="narrative-loading">${t("narrative.openerLoading")}</p>`;
+        generateOpener(c).then(text => {
+          if (STATE.case === c) {
+            openerEl.innerHTML = `<p>${escapeHtml(text)}</p>`;
+          }
+        }).catch(err => {
+          console.warn("[noir] opener LLM failed:", err.message);
+          openerEl.hidden = true;
+        });
+      }
+    } else {
+      openerEl.hidden = true;
+      openerEl.innerHTML = "";
+    }
+  }
   $("#briefing-case-id").textContent = "#" + c.caseId;
   $("#briefing-victim").textContent  = `${c.victim.name}, ${c.victim.title}`;
   $("#briefing-scene").textContent   = c.scene;
@@ -1192,6 +1240,62 @@ async function callLLM(suspect, userQuestion) {
   return scrubLeak(reply, suspect, STATE.case);
 }
 
+// Raw single-shot LLM call (no per-suspect roleplay constraints) used for
+// the narrative layer (case opener, reveal monologue).
+async function callLLMRaw(system, user, maxTokens = 1000) {
+  if (!activeKey()) throw new Error("no API key");
+  if (STATE.provider === "google") return _callGeminiRaw(system, user, maxTokens);
+  return _callClaudeRaw(system, user, maxTokens);
+}
+
+async function _callClaudeRaw(systemText, userText, maxTokens) {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": STATE.apiKeys.anthropic,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: STATE.apiModels.anthropic,
+      max_tokens: maxTokens,
+      system: systemText,
+      messages: [{ role: "user", content: userText }],
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Anthropic ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  const blocks = data.content || [];
+  const t = blocks.filter(b => b.type === "text").map(b => b.text).join("");
+  return t.trim();
+}
+
+async function _callGeminiRaw(systemText, userText, maxTokens) {
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/"
+            + encodeURIComponent(STATE.apiModels.google) + ":generateContent?key="
+            + encodeURIComponent(STATE.apiKeys.google);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: systemText }] },
+      contents: [{ role: "user", parts: [{ text: userText }] }],
+      generationConfig: { maxOutputTokens: maxTokens, temperature: 0.85 },
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Gemini ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  return parts.map(p => p.text || "").join("").trim();
+}
+
 // Anti-leak: post-process the LLM reply. If it contains a confession or
 // directly names the killer, swap it for a voice-flavored deflection
 // line. Catches the rare case where an LLM breaks the system-prompt
@@ -1333,6 +1437,107 @@ async function callGemini(suspect, userQuestion) {
   return text.trim();
 }
 
+/* ============================== Narrative layer (opener + reveal) ============================== */
+
+function narrativeEnabled() {
+  return !!activeKey() && STATE.narrativeOn;
+}
+
+async function generateOpener(caseObj) {
+  if (caseObj.narrativeOpener) return caseObj.narrativeOpener;
+  const lang = caseObj.lang;
+  const system = (lang === "zh")
+    ? "你是 1930 年代民国上海 noir 风格的旁白。用 3-4 句话 (约 80 字) 描写到案现场: 尸体怎么躺着, 房间里什么气氛, 雨/烟/灯光等。短句, 沉郁。不许提到任何嫌疑人, 不许暗示凶手, 不许提到动机或目击者。只渲染场景。直接输出散文, 不要引号或前后缀。"
+    : "You are a 1940s American noir narrator opening a detective case file. Write a single atmospheric paragraph (3-4 sentences, ~80 words) describing how the body was found at the scene. Use noir voice: rain, cigarette smoke, dim light, terse declarative sentences. Do NOT name any suspect or hint at the killer. Do NOT mention motive or witnesses. Only the body, the room, the weapon, the hour. Output ONLY the paragraph, no quotation marks, no preface.";
+  const user = (lang === "zh")
+    ? `受害人: ${caseObj.victim.name}, ${caseObj.victim.title}\n现场: ${caseObj.scene}\n现场凶器: ${caseObj.weaponAtScene}\n死亡时间: ${caseObj.timeOfDeath}`
+    : `Victim: ${caseObj.victim.name}, ${caseObj.victim.title}\nScene: ${caseObj.scene}\nWeapon at scene: ${caseObj.weaponAtScene}\nTime of death: ${caseObj.timeOfDeath}`;
+  const reply = await callLLMRaw(system, user, 400);
+  caseObj.narrativeOpener = reply;
+  return reply;
+}
+
+function _buildRevealUserPayload(caseObj) {
+  const lang = caseObj.lang;
+  const killer = caseObj.suspects.find(s => s._isKiller);
+  const witness = caseObj.suspects.find(s =>
+    s.knowsFacts.some(f => f.type === "witness" && !f._false));
+  const motiveLeaker = caseObj.suspects.find(s =>
+    s.knowsFacts.some(f => f.type === "motive"));
+  const falseWitness = caseObj.suspects.find(s =>
+    s.knowsFacts.some(f => f._false));
+  const redHerrings = caseObj.suspects.filter(s =>
+    !s._isKiller &&
+    s.knowsFacts.length === 0 &&
+    s.thingsToHide.length > 0);
+
+  const lines = [];
+  if (lang === "zh") {
+    lines.push(`受害人: ${caseObj.victim.name}, ${caseObj.victim.title}`);
+    lines.push(`现场: ${caseObj.scene}  /  凶器: ${caseObj.weaponAtScene}  /  死亡时间: ${caseObj.timeOfDeath}`);
+    lines.push("");
+    lines.push(`真凶: ${killer.name} (${killer.occupation})`);
+    lines.push(`凶手对警官谎称的不在场证明: "${killer.claimedAlibi}"`);
+    lines.push(`凶手的动机类型: ${caseObj._motiveType || "(无)"}`);
+    if (witness) {
+      lines.push(`关键目击者: ${witness.name} (${witness.occupation})`);
+      lines.push(`目击词: ${witness.knowsFacts.find(f => f.type === "witness").text}`);
+    }
+    if (motiveLeaker) {
+      lines.push(`动机泄露者: ${motiveLeaker.name} (${motiveLeaker.occupation})`);
+      lines.push(`所知传闻: ${motiveLeaker.knowsFacts.find(f => f.type === "motive").text}`);
+    }
+    if (falseWitness) {
+      lines.push(`误导证人 (Hard 模式): ${falseWitness.name} 错指了 ${falseWitness.knowsFacts.find(f => f._false)._namedSuspect}`);
+    }
+    if (redHerrings.length) {
+      lines.push("");
+      lines.push("其他嫌疑人 (无辜) 的红鲱鱼私事 (跟凶案无关):");
+      redHerrings.forEach(s => {
+        lines.push(`  - ${s.name} (${s.occupation}): ${s.thingsToHide[0]}`);
+      });
+    }
+  } else {
+    lines.push(`Victim: ${caseObj.victim.name}, ${caseObj.victim.title}`);
+    lines.push(`Scene: ${caseObj.scene}  /  Weapon: ${caseObj.weaponAtScene}  /  Time of death: ${caseObj.timeOfDeath}`);
+    lines.push("");
+    lines.push(`KILLER: ${killer.name} (${killer.occupation})`);
+    lines.push(`Killer's lie to the detective (false alibi): "${killer.claimedAlibi}"`);
+    lines.push(`Killer's motive type: ${caseObj._motiveType || "(none)"}`);
+    if (witness) {
+      lines.push(`Key witness: ${witness.name} (${witness.occupation})`);
+      lines.push(`Witness statement: ${witness.knowsFacts.find(f => f.type === "witness").text}`);
+    }
+    if (motiveLeaker) {
+      lines.push(`Motive leaker: ${motiveLeaker.name} (${motiveLeaker.occupation})`);
+      lines.push(`What they heard: ${motiveLeaker.knowsFacts.find(f => f.type === "motive").text}`);
+    }
+    if (falseWitness) {
+      lines.push(`Misleading 2nd witness (hard mode): ${falseWitness.name} wrongly named ${falseWitness.knowsFacts.find(f => f._false)._namedSuspect}`);
+    }
+    if (redHerrings.length) {
+      lines.push("");
+      lines.push("Other suspects (innocent) and their unrelated red-herring secrets:");
+      redHerrings.forEach(s => {
+        lines.push(`  - ${s.name} (${s.occupation}): ${s.thingsToHide[0]}`);
+      });
+    }
+  }
+  return lines.join("\n");
+}
+
+async function generateRevealMonologue(caseObj) {
+  if (caseObj.narrativeReveal) return caseObj.narrativeReveal;
+  const lang = caseObj.lang;
+  const system = (lang === "zh")
+    ? "你扮演一桩 1930 年代民国上海 noir 凶案中的侦探, 案子刚破, 现在念结案独白。200-280 字, 用上海腔/民国调调。串起这些信息: 凶手 + 动机, 目击者那晚看到什么, 凶器为什么在现场, 每个无辜嫌疑人的红鲱鱼私事各是什么 (这些私事都跟凶案无关, 只是让他们看上去可疑)。用第一人称 (「我知道是 X 的时候……」)。不出戏, 不提脚本/游戏。直接输出独白, 不要引号或前后缀。"
+    : "You are the detective in a 1940s noir film delivering a closing monologue, having just solved the case. Write 200-280 words in noir voice. Tie together: who the killer is + their motive, what the witness saw, why the weapon was at the scene, and (briefly) what each non-killer's red herring secret was actually about — make clear those secrets were unrelated to the murder, only making them LOOK suspicious. Speak in first person ('I knew it was X when...'). Do not break character. Do not mention the script or game. Output ONLY the monologue, no quotation marks, no preface.";
+  const user = _buildRevealUserPayload(caseObj);
+  const reply = await callLLMRaw(system, user, 1200);
+  caseObj.narrativeReveal = reply;
+  return reply;
+}
+
 /* ============================== accusation + verdict ============================== */
 
 function renderAccusationGrid() {
@@ -1407,6 +1612,25 @@ function renderRevealAll(panel) {
   panel.innerHTML = "";
   const header = el("h3", { class: "reveal-header" }, t("reveal.title"));
   panel.appendChild(header);
+
+  // Closing-monologue narrative block (LLM, if enabled)
+  if (narrativeEnabled()) {
+    const monologue = el("div", { class: "reveal-monologue" });
+    if (c.narrativeReveal) {
+      monologue.innerHTML = `<p>${escapeHtml(c.narrativeReveal).replace(/\n+/g, "</p><p>")}</p>`;
+    } else {
+      monologue.innerHTML = `<p class="narrative-loading">${t("narrative.revealLoading")}</p>`;
+      generateRevealMonologue(c).then(text => {
+        if (STATE.case === c) {
+          monologue.innerHTML = `<p>${escapeHtml(text).replace(/\n+/g, "</p><p>")}</p>`;
+        }
+      }).catch(err => {
+        console.warn("[noir] reveal LLM failed:", err.message);
+        monologue.remove();
+      });
+    }
+    panel.appendChild(monologue);
+  }
 
   c.suspects.forEach(s => {
     const card = el("div", { class: "reveal-card" + (s._isKiller ? " killer" : "") });
@@ -1565,6 +1789,7 @@ function openSettings() {
   renderStats();
   // Reflect current ambient state in its toggle button
   $$("[data-action=toggle-ambient]").forEach(b => b.classList.toggle("active", AUDIO.ambientOn));
+  $$("[data-action=toggle-narrative]").forEach(b => b.classList.toggle("active", STATE.narrativeOn));
   // Render the provider-specific model dropdown options first
   for (const provKey of Object.keys(PROVIDERS)) {
     const sel = $(`#${provKey}-model`);
@@ -1773,6 +1998,8 @@ function loadSettings() {
 
   AUDIO.muted    = localStorage.getItem(LS.muted) === "1";
   AUDIO.ambientOn = localStorage.getItem(LS.ambient) === "1";
+  // Narrative layer defaults ON when enabled (only effective if AI key present)
+  STATE.narrativeOn = localStorage.getItem(LS.narrative) !== "0";
 
   // URL params take precedence on first load (so shared links work).
   const params = new URLSearchParams(window.location.search);
@@ -1846,6 +2073,7 @@ function bind() {
         case "reset-stats":      resetStats();      break;
         case "scroll-to-bottom": scrollConvoToBottom(); break;
         case "toggle-ambient":   ambientToggle();   break;
+        case "toggle-narrative": narrativeToggle(); break;
       }
       return;
     }

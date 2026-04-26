@@ -62,6 +62,7 @@
           <span class="case-status" data-i18n="briefing.statusOpen">OPEN</span>
         </div>
         <div class="case-body">
+          <div id="briefing-opener" class="briefing-opener" hidden></div>
           <h2 class="case-title" data-i18n="briefing.title">Homicide Report</h2>
           <dl class="case-fields">
             <dt data-i18n="briefing.victim">VICTIM</dt><dd id="briefing-victim">—</dd>
@@ -338,6 +339,15 @@
           <button class="btn-secondary" data-action="clear-api-key" data-i18n="btn.clear">CLEAR</button>
         </div>
         <p class="setting-status" id="api-status" data-i18n="settings.noKey">No key saved.</p>
+
+        <hr style="margin: 18px 0; border: none; border-top: 1px dashed var(--paper-shadow);">
+        <button class="ambient-toggle" id="narrative-toggle"
+                data-action="toggle-narrative">
+          <span data-i18n="settings.narrativeLabel">LLM narrative (opener + reveal monologue)</span>
+        </button>
+        <p class="setting-desc" data-i18n="settings.narrativeDesc" style="margin-top: 8px; font-size: 0.82rem;">
+          When enabled, the briefing gains an atmospheric scene-setter and the verdict reveals a noir-style closing monologue tying motive, witness, and red herrings together. Adds 2 small API calls per case.
+        </p>
       </section>
 
       <section class="setting-block">
