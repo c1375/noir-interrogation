@@ -1196,14 +1196,25 @@ async function callLLM(suspect, userQuestion) {
 // directly names the killer, swap it for a voice-flavored deflection
 // line. Catches the rare case where an LLM breaks the system-prompt
 // rules under pressure.
+// Only fire on phrases that are unambiguously a murder confession in any
+// context. Earlier versions caught false positives ("I'm guilty of poor
+// taste in suitors") and replaced legit responses with a short deflection,
+// which looked like the suspect's reply was cut off.
 const LEAK_PATTERNS = {
   confession: [
-    /\bi (did it|killed (him|her|them|the victim)|murdered)\b/i,
-    /\bit was me\b/i,
-    /\bi (confess|admit)( that)? i killed\b/i,
-    /\bi'?m (the killer|guilty|the one who)\b/i,
-    /(我杀了|是我干的|是我下的手|是我害的|我承认.*杀|我招了|确实是我.*杀|的确是我.*杀)/,
-    /(我.{0,3}就是凶手|我.{0,3}就是杀人犯)/,
+    // EN: explicit murder admissions only. "I did it" alone is too generic
+    // (could be "I did it for love"); require a victim reference.
+    /\bi killed (him|her|them|the victim|the (man|woman|deceased))\b/i,
+    /\bi murdered (him|her|them|the victim|the (man|woman|deceased))\b/i,
+    /\bit was me( who killed|, i killed)\b/i,
+    /\bi (confess|admit)(?: that)? i (killed|murdered)\b/i,
+    /\bi(?:'m| am) the (killer|murderer)\b/i,
+
+    // ZH: explicit murder admissions only.
+    /我杀(了|的)\s*(他|她|那个|被害|死者|受害)/,
+    /(是|确实是|的确是)我(杀|害)(了|的)/,
+    /我承认.*?(我|是)?(杀|害)了/,
+    /我.{0,3}就是(凶手|杀人犯|凶杀)/,
   ],
 };
 
@@ -1252,7 +1263,7 @@ async function callClaude(suspect, userQuestion) {
     },
     body: JSON.stringify({
       model: STATE.apiModels.anthropic,
-      max_tokens: 400,
+      max_tokens: 800,
       system,
       messages,
     }),
@@ -1298,7 +1309,7 @@ async function callGemini(suspect, userQuestion) {
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents,
-      generationConfig: { maxOutputTokens: 400, temperature: 0.9 },
+      generationConfig: { maxOutputTokens: 800, temperature: 0.9 },
     }),
   });
 
