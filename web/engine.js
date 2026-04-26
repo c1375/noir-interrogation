@@ -868,6 +868,65 @@ const DIFFICULTY = {
   hard:   { suspects: 5, addWitness: true, addMotive: true,  addFalseWitness: true  },
 };
 
+/* ============== Avatars (per-occupation simple SVG silhouettes) ============== */
+/* Inline SVG parts. Each accessory is layered over a shared head+shoulders
+   silhouette. fill/stroke uses currentColor so the avatar inherits the
+   suspect card's text color. */
+
+const AVATAR_BASE = '<ellipse cx="30" cy="55" rx="22" ry="14"/><circle cx="30" cy="26" r="11"/>';
+
+const AVATAR_ACC = {
+  // === EN ===
+  "nightclub singer":         '<rect x="29" y="35" width="2" height="10"/><circle cx="30" cy="46" r="3" fill="none" stroke="currentColor" stroke-width="1"/><path d="M40,15 a3,3 0 0,1 6,0" fill="none" stroke="currentColor" stroke-width="1"/>',
+  "pawn shop owner":          '<rect x="18" y="13" width="24" height="3"/><path d="M21,40 L21,55 M39,40 L39,55" stroke="currentColor" stroke-width="0.8" fill="none"/>',
+  "society doctor":           '<path d="M22,38 Q22,46 30,46 Q38,46 38,38" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="30" cy="48" r="2"/>',
+  "accountant for the mob":   '<rect x="22" y="22" width="6" height="3" fill="none" stroke="currentColor" stroke-width="0.8"/><rect x="32" y="22" width="6" height="3" fill="none" stroke="currentColor" stroke-width="0.8"/><line x1="28" y1="23.5" x2="32" y2="23.5" stroke="currentColor" stroke-width="0.8"/>',
+  "investigative journalist": '<rect x="18" y="13" width="24" height="6"/><rect x="34" y="14" width="6" height="3" fill="none" stroke="var(--paper)" stroke-width="0.5"/>',
+  "lawyer":                   '<path d="M27,40 L30,44 L33,40" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M22,42 L25,46 L28,42 M32,42 L35,46 L38,42" fill="none" stroke="currentColor" stroke-width="0.8"/>',
+  "professional gambler":     '<rect x="40" y="20" width="9" height="12" fill="none" stroke="currentColor" stroke-width="1" rx="1"/><text x="44.5" y="28" font-size="6" text-anchor="middle" fill="currentColor">A</text>',
+  "society heiress":          '<path d="M14,12 Q30,2 46,12 L46,15 L14,15 Z"/><circle cx="22" cy="42" r="1"/><circle cx="26" cy="44" r="1"/><circle cx="30" cy="44.5" r="1"/><circle cx="34" cy="44" r="1"/><circle cx="38" cy="42" r="1"/>',
+  "war veteran turned PI":    '<path d="M14,16 Q30,7 46,16 L48,20 L12,20 Z"/><rect x="14" y="18" width="32" height="2"/>',
+  "fortune teller":           '<path d="M18,20 Q30,8 42,20 L42,24 L18,24 Z"/><circle cx="30" cy="22" r="1.4"/><path d="M27,33 L30,36 L33,33" fill="none" stroke="currentColor" stroke-width="0.8"/>',
+  "longshoreman":             '<path d="M16,15 Q30,9 44,15 L44,19 L16,19 Z"/><rect x="22" y="42" width="16" height="3"/>',
+  "former silent film actress":'<path d="M14,17 L46,17 L42,11 L18,11 Z"/><path d="M44,17 Q50,8 54,11" fill="none" stroke="currentColor" stroke-width="1.3"/>',
+  "speakeasy bartender":      '<path d="M27,38 L33,38 L31,42 L29,42 Z"/><rect x="22" y="42" width="16" height="9" fill="none" stroke="currentColor" stroke-width="0.8"/>',
+  "retired prizefighter":     '<rect x="20" y="18" width="20" height="3" rx="1"/><path d="M14,40 Q14,55 30,55 Q46,55 46,40" fill="none"/><circle cx="22" cy="50" r="5"/><circle cx="38" cy="50" r="5"/>',
+  "night-shift cab driver":   '<rect x="18" y="14" width="24" height="6"/><rect x="22" y="11" width="16" height="4"/>',
+  "stage magician":           '<rect x="20" y="3" width="20" height="13"/><rect x="17" y="14" width="26" height="3"/>',
+  "mortician":                '<rect x="22" y="38" width="16" height="14" fill="none" stroke="currentColor" stroke-width="1"/><path d="M30,38 L30,46" stroke="currentColor" stroke-width="0.8"/>',
+  "fence":                    '<circle cx="25" cy="25" r="2.5" fill="none" stroke="currentColor" stroke-width="0.8"/><circle cx="35" cy="25" r="2.5" fill="none" stroke="currentColor" stroke-width="0.8"/><line x1="27.5" y1="25" x2="32.5" y2="25" stroke="currentColor" stroke-width="0.6"/>',
+  "society photographer":     '<rect x="20" y="20" width="20" height="14" rx="2"/><circle cx="30" cy="27" r="4" fill="none" stroke="var(--paper)" stroke-width="1"/><rect x="34" y="17" width="4" height="3"/>',
+  "insurance investigator":   '<line x1="22" y1="23" x2="26" y2="25" stroke="currentColor" stroke-width="0.8"/><line x1="34" y1="25" x2="38" y2="23" stroke="currentColor" stroke-width="0.8"/><circle cx="24" cy="25" r="2.5" fill="none" stroke="currentColor" stroke-width="0.8"/><circle cx="36" cy="25" r="2.5" fill="none" stroke="currentColor" stroke-width="0.8"/>',
+  // === ZH (most reuse the EN concepts; differentiate where culturally distinct) ===
+  "百乐门舞女":         '<rect x="29" y="35" width="2" height="10"/><circle cx="30" cy="46" r="3" fill="none" stroke="currentColor" stroke-width="1"/><path d="M40,15 a3,3 0 0,1 6,0" fill="none" stroke="currentColor" stroke-width="1"/>',
+  "当铺老板":           '<rect x="18" y="13" width="24" height="3"/><path d="M21,40 L21,55 M39,40 L39,55" stroke="currentColor" stroke-width="0.8" fill="none"/>',
+  "济世名医":           '<path d="M22,38 Q22,46 30,46 Q38,46 38,38" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="30" cy="48" r="2"/>',
+  "帮派账房":           '<rect x="22" y="22" width="6" height="3" fill="none" stroke="currentColor" stroke-width="0.8"/><rect x="32" y="22" width="6" height="3" fill="none" stroke="currentColor" stroke-width="0.8"/><line x1="28" y1="23.5" x2="32" y2="23.5" stroke="currentColor" stroke-width="0.8"/>',
+  "申报记者":           '<rect x="18" y="13" width="24" height="6"/><rect x="34" y="14" width="6" height="3" fill="none" stroke="var(--paper)" stroke-width="0.5"/>',
+  "法租界律师":         '<path d="M27,40 L30,44 L33,40" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M22,42 L25,46 L28,42 M32,42 L35,46 L38,42" fill="none" stroke="currentColor" stroke-width="0.8"/>',
+  "跑马场赌客":         '<rect x="40" y="20" width="9" height="12" fill="none" stroke="currentColor" stroke-width="1" rx="1"/><text x="44.5" y="28" font-size="6" text-anchor="middle" fill="currentColor">A</text>',
+  "上海名媛":           '<path d="M14,12 Q30,2 46,12 L46,15 L14,15 Z"/><circle cx="22" cy="42" r="1"/><circle cx="26" cy="44" r="1"/><circle cx="30" cy="44.5" r="1"/><circle cx="34" cy="44" r="1"/><circle cx="38" cy="42" r="1"/>',
+  "退伍宪兵转私家侦探": '<path d="M14,16 Q30,7 46,16 L48,20 L12,20 Z"/><rect x="14" y="18" width="32" height="2"/>',
+  "茶楼算命先生":       '<path d="M18,20 Q30,8 42,20 L42,24 L18,24 Z"/><circle cx="30" cy="22" r="1.4"/><path d="M27,33 L30,36 L33,33" fill="none" stroke="currentColor" stroke-width="0.8"/>',
+  "码头脚行":           '<path d="M16,15 Q30,9 44,15 L44,19 L16,19 Z"/><rect x="22" y="42" width="16" height="3"/>',
+  "默片影后":           '<path d="M14,17 L46,17 L42,11 L18,11 Z"/><path d="M44,17 Q50,8 54,11" fill="none" stroke="currentColor" stroke-width="1.3"/>',
+  "百乐门吧台师傅":     '<path d="M27,38 L33,38 L31,42 L29,42 Z"/><rect x="22" y="42" width="16" height="9" fill="none" stroke="currentColor" stroke-width="0.8"/>',
+  "拳馆教头":           '<rect x="20" y="18" width="20" height="3" rx="1"/><circle cx="22" cy="50" r="5"/><circle cx="38" cy="50" r="5"/>',
+  // 黄包车夫 -- coolie/sun hat (wide brim conical) instead of chauffeur cap
+  "黄包车夫":           '<path d="M10,20 L30,8 L50,20 L50,22 L10,22 Z"/>',
+  "大世界戏法师":       '<rect x="20" y="3" width="20" height="13"/><rect x="17" y="14" width="26" height="3"/>',
+  "义庄先生":           '<rect x="22" y="38" width="16" height="14" fill="none" stroke="currentColor" stroke-width="1"/><path d="M30,38 L30,46" stroke="currentColor" stroke-width="0.8"/>',
+  "黑市掮客":           '<circle cx="25" cy="25" r="2.5" fill="none" stroke="currentColor" stroke-width="0.8"/><circle cx="35" cy="25" r="2.5" fill="none" stroke="currentColor" stroke-width="0.8"/><line x1="27.5" y1="25" x2="32.5" y2="25" stroke="currentColor" stroke-width="0.6"/>',
+  "画报摄影师":         '<rect x="20" y="20" width="20" height="14" rx="2"/><circle cx="30" cy="27" r="4" fill="none" stroke="var(--paper)" stroke-width="1"/><rect x="34" y="17" width="4" height="3"/>',
+  // 古董行掌柜 -- magnifying glass instead of insurance pince-nez
+  "古董行掌柜":         '<circle cx="38" cy="22" r="6" fill="none" stroke="currentColor" stroke-width="1.4"/><line x1="42" y1="26" x2="48" y2="32" stroke="currentColor" stroke-width="1.4"/>',
+};
+
+function avatarSvg(occupation) {
+  const acc = AVATAR_ACC[occupation] || "";
+  return `<svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg" fill="currentColor">${AVATAR_BASE}${acc}</svg>`;
+}
+
 /* ============== Helpers ============== */
 
 // Deterministic PRNG (mulberry32). Same seed -> same sequence -> same case.

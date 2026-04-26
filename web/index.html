@@ -130,7 +130,11 @@
             <p class="notes-empty" data-i18n="notes.empty">No statements collected yet. Question a suspect to fill the file.</p>
           </div>
         </aside>
-        <div class="conversation" id="conversation"></div>
+        <div class="conversation-wrap">
+          <div class="conversation" id="conversation"></div>
+          <button id="scroll-to-bottom" class="scroll-to-bottom" hidden
+                  data-action="scroll-to-bottom" data-i18n="convo.scrollLatest">↓ NEW</button>
+        </div>
         <div class="ask-area" id="ask-area">
           <div class="ask-area-header">
             <div class="mode-toggle">
@@ -201,6 +205,36 @@
     </section>
 
   </main>
+
+  <!-- ========== KEYBOARD SHORTCUTS HELP ========== -->
+  <div id="shortcuts-help" class="shortcuts-help" hidden>
+    <div class="shortcuts-content">
+      <h3 data-i18n="shortcuts.title">Keyboard Shortcuts</h3>
+      <div class="shortcuts-section">
+        <h4 data-i18n="shortcuts.title-screen">Title screen</h4>
+        <div class="shortcuts-row"><kbd>N</kbd> <span data-i18n="shortcuts.newCase">New case</span></div>
+        <div class="shortcuts-row"><kbd>D</kbd> <span data-i18n="shortcuts.daily">Daily case</span></div>
+        <div class="shortcuts-row"><kbd>S</kbd> <span data-i18n="shortcuts.settings">Settings</span></div>
+      </div>
+      <div class="shortcuts-section">
+        <h4 data-i18n="shortcuts.lineup">Lineup</h4>
+        <div class="shortcuts-row"><kbd>1</kbd>–<kbd>5</kbd> <span data-i18n="shortcuts.pickSuspect">Question suspect by number</span></div>
+        <div class="shortcuts-row"><kbd>A</kbd> <span data-i18n="shortcuts.accuse">Make accusation</span></div>
+        <div class="shortcuts-row"><kbd>C</kbd> <span data-i18n="shortcuts.caseFile">Case file modal</span></div>
+      </div>
+      <div class="shortcuts-section">
+        <h4 data-i18n="shortcuts.interrog">Interrogation</h4>
+        <div class="shortcuts-row"><kbd>N</kbd> <span data-i18n="shortcuts.notes">Toggle notes</span></div>
+        <div class="shortcuts-row"><kbd>C</kbd> <span data-i18n="shortcuts.caseFile">Case file modal</span></div>
+        <div class="shortcuts-row"><kbd>L</kbd> <span data-i18n="shortcuts.backLineup">Back to lineup</span></div>
+      </div>
+      <div class="shortcuts-section">
+        <h4 data-i18n="shortcuts.global">Anywhere</h4>
+        <div class="shortcuts-row"><kbd>?</kbd> <span data-i18n="shortcuts.toggleHelp">Toggle this help</span></div>
+        <div class="shortcuts-row"><kbd>Esc</kbd> <span data-i18n="shortcuts.close">Close any open overlay</span></div>
+      </div>
+    </div>
+  </div>
 
   <!-- ========== TUTORIAL HINT (first-play only) ========== -->
   <div id="tutorial-hint" class="tutorial-hint" hidden>
@@ -304,6 +338,24 @@
           <button class="btn-secondary" data-action="clear-api-key" data-i18n="btn.clear">CLEAR</button>
         </div>
         <p class="setting-status" id="api-status" data-i18n="settings.noKey">No key saved.</p>
+      </section>
+
+      <section class="setting-block">
+        <h3 data-i18n="settings.audioSection">Audio</h3>
+        <p class="setting-desc" data-i18n="settings.audioDesc">
+          The audio toggle in the top-right corner mutes / unmutes sound effects.
+          Ambient background (rain + faint piano) is opt-in below.
+        </p>
+        <button class="ambient-toggle" id="ambient-toggle"
+                data-action="toggle-ambient">
+          <span data-i18n="settings.ambientLabel">Ambient (rain + piano)</span>
+        </button>
+      </section>
+
+      <section class="setting-block">
+        <h3 data-i18n="settings.statsSection">Statistics &amp; Achievements</h3>
+        <div id="stats-display"></div>
+        <button class="btn-secondary" data-action="reset-stats" data-i18n="settings.resetStats">RESET STATS</button>
       </section>
 
       <section class="setting-block">

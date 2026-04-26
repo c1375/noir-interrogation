@@ -33,8 +33,70 @@ const LS = {
   lang:             "noir.lang",
   difficulty:       "noir.difficulty",
   muted:            "noir.muted",
+  ambient:          "noir.ambient",
   tutorialSeen:     "noir.tutorialSeen",
+  stats:            "noir.stats",
 };
+
+const DEFAULT_STATS = {
+  played:    0,
+  solved:    0,
+  failed:    0,
+  byDifficulty: { easy: { played: 0, solved: 0 }, normal: { played: 0, solved: 0 }, hard: { played: 0, solved: 0 } },
+  fastestQuestions: null,    // best (lowest) total questions in a solved case
+  currentStreak: 0,           // consecutive solves in a row
+  bestStreak: 0,
+  achievements: {},          // {key: timestamp}
+};
+
+function loadStats() {
+  try {
+    const raw = localStorage.getItem(LS.stats);
+    if (!raw) return JSON.parse(JSON.stringify(DEFAULT_STATS));
+    const s = JSON.parse(raw);
+    // Defensive merge with defaults so older stored shapes don't break
+    return Object.assign({}, JSON.parse(JSON.stringify(DEFAULT_STATS)), s);
+  } catch (_) {
+    return JSON.parse(JSON.stringify(DEFAULT_STATS));
+  }
+}
+
+function saveStats(s) {
+  localStorage.setItem(LS.stats, JSON.stringify(s));
+}
+
+function recordVerdict(verdict) {
+  const s = loadStats();
+  const c = STATE.case;
+  s.played += 1;
+  const diff = c.difficulty || "normal";
+  if (!s.byDifficulty[diff]) s.byDifficulty[diff] = { played: 0, solved: 0 };
+  s.byDifficulty[diff].played += 1;
+  if (verdict.correct) {
+    s.solved += 1;
+    s.byDifficulty[diff].solved += 1;
+    s.currentStreak += 1;
+    if (s.currentStreak > s.bestStreak) s.bestStreak = s.currentStreak;
+    // Total questions asked = sum across all suspects
+    const totalQs = Object.values(c.questionCounts || {}).reduce((a, b) => a + b, 0);
+    if (s.fastestQuestions == null || totalQs < s.fastestQuestions) {
+      s.fastestQuestions = totalQs;
+    }
+    // Achievements
+    const ach = s.achievements;
+    const now = new Date().toISOString();
+    if (!ach.firstSolve)               ach.firstSolve = now;
+    if (totalQs <= 5 && !ach.fiveQ)    ach.fiveQ = now;
+    if (diff === "hard" && !ach.hardSolve) ach.hardSolve = now;
+    if (STATE.evidence.length === 0 && !ach.noConfront) ach.noConfront = now;
+    if (s.currentStreak >= 3 && !ach.streak3) ach.streak3 = now;
+    if (s.solved >= 10 && !ach.tenSolves) ach.tenSolves = now;
+  } else {
+    s.failed += 1;
+    s.currentStreak = 0;
+  }
+  saveStats(s);
+}
 
 const PROVIDERS = {
   anthropic: {
@@ -67,6 +129,7 @@ const PROVIDERS = {
 const AUDIO = {
   ctx: null,
   muted: false,
+  ambientOn: false,
 };
 
 function audioInit() {
@@ -85,7 +148,20 @@ function audioToggle() {
   AUDIO.muted = !AUDIO.muted;
   localStorage.setItem(LS.muted, AUDIO.muted ? "1" : "0");
   refreshAudioToggle();
-  if (!AUDIO.muted) audioInit();
+  if (AUDIO.muted) {
+    stopAmbient();
+  } else {
+    audioInit();
+    if (AUDIO.ambientOn) startAmbient();
+  }
+}
+
+function ambientToggle() {
+  AUDIO.ambientOn = !AUDIO.ambientOn;
+  localStorage.setItem(LS.ambient, AUDIO.ambientOn ? "1" : "0");
+  $$("[data-action=toggle-ambient]").forEach(b => b.classList.toggle("active", AUDIO.ambientOn));
+  if (AUDIO.ambientOn && !AUDIO.muted) startAmbient();
+  else stopAmbient();
 }
 
 function refreshAudioToggle() {
@@ -159,6 +235,85 @@ function sfxStamp() {
   osc.stop(t0 + 0.3);
   // Add a paper "snap" via short noise burst layered on top
   setTimeout(sfxClick, 0);
+}
+
+// ===== Ambient: continuous rain + sparse low piano =====
+
+let _ambient = null;
+
+function startAmbient() {
+  if (AUDIO.muted || _ambient) return;
+  const ctx = audioInit();
+  if (!ctx) return;
+
+  // Rain: looping filtered white noise
+  const dur = 4;
+  const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.3;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.loop = true;
+
+  const hp = ctx.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 1200;
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.value = 5500;
+
+  const rainGain = ctx.createGain();
+  rainGain.gain.setValueAtTime(0, ctx.currentTime);
+  rainGain.gain.linearRampToValueAtTime(0.05, ctx.currentTime + 2);
+
+  src.connect(hp).connect(lp).connect(rainGain).connect(ctx.destination);
+  src.start();
+
+  // Piano: schedule occasional low notes
+  // Pentatonic minor in C (low) -- C2/D#2/F2/G2/A#2 -- moody, never out-of-key
+  const notes = [65.4, 77.8, 87.3, 98.0, 116.5];
+  const pianoInterval = setInterval(() => {
+    if (!_ambient || AUDIO.muted) return;
+    pianoNote(ctx, ctx.currentTime + 0.05, pick(notes));
+  }, 9000 + Math.random() * 6000);
+
+  _ambient = { src, rainGain, pianoInterval };
+}
+
+function pianoNote(ctx, when, freq) {
+  const dur = 2.4;
+  const osc = ctx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.value = freq;
+  const osc2 = ctx.createOscillator();
+  osc2.type = "sine";
+  osc2.frequency.value = freq * 2;
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0, when);
+  env.gain.linearRampToValueAtTime(0.04, when + 0.04);
+  env.gain.exponentialRampToValueAtTime(0.001, when + dur);
+  const env2 = ctx.createGain();
+  env2.gain.setValueAtTime(0, when);
+  env2.gain.linearRampToValueAtTime(0.012, when + 0.04);
+  env2.gain.exponentialRampToValueAtTime(0.001, when + dur * 0.6);
+  osc.connect(env).connect(ctx.destination);
+  osc2.connect(env2).connect(ctx.destination);
+  osc.start(when);
+  osc2.start(when);
+  osc.stop(when + dur);
+  osc2.stop(when + dur);
+}
+
+function stopAmbient() {
+  if (!_ambient) return;
+  const ctx = AUDIO.ctx;
+  const { src, rainGain, pianoInterval } = _ambient;
+  clearInterval(pianoInterval);
+  if (ctx) {
+    rainGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.5);
+    setTimeout(() => { try { src.stop(); } catch (_) {} }, 600);
+  }
+  _ambient = null;
 }
 
 // Vinyl crackle -- a short ambient burst we can tile
@@ -306,6 +461,26 @@ const STRINGS = {
     "settings.noKey":        "No key saved. AI mode disabled; OFFLINE mode still works.",
     "settings.keySet":       (masked, justSaved) => (justSaved ? "Saved. " : "") +
                               `Key set (${masked}). AI mode is now available in interrogation.`,
+    "settings.statsSection": "Statistics & Achievements",
+    "settings.resetStats":   "RESET STATS",
+    "stats.played":          "PLAYED",
+    "stats.winRate":         "WIN RATE",
+    "stats.bestStreak":      "BEST STREAK",
+    "stats.fewestQs":        "FEWEST Qs (SOLVE)",
+    "stats.achievements":    "ACHIEVEMENTS",
+    "stats.resetConfirm":    "Reset all statistics and achievements? This can't be undone.",
+    "ach.firstSolve":        "First Case Closed",
+    "ach.firstSolve.desc":   "Solve your first case.",
+    "ach.fiveQ":             "Lightning Detective",
+    "ach.fiveQ.desc":        "Solve a case in 5 questions or fewer.",
+    "ach.hardSolve":         "Cross-Examiner",
+    "ach.hardSolve.desc":    "Solve a Hard case (with the misleading 2nd witness).",
+    "ach.noConfront":        "No Confrontation Needed",
+    "ach.noConfront.desc":   "Solve without ever using CONFRONT.",
+    "ach.streak3":           "On a Roll",
+    "ach.streak3.desc":      "Solve 3 cases in a row.",
+    "ach.tenSolves":         "Veteran of the Beat",
+    "ach.tenSolves.desc":    "Solve 10 cases total.",
     "settings.aboutSection": "About",
     "settings.aboutDesc":    "Noir Interrogation is a one-shot detective game built primarily as a Claude Code skill at .claude/skills/noir-interrogation/. The script in that skill keeps the killer's identity hidden (committed via SHA-256), generates suspect cards, and verifies your accusation. This web port mirrors the same engine in JavaScript.",
 
@@ -316,6 +491,25 @@ const STRINGS = {
     "tutorial.tag":          "FIRST CASE — A QUICK TIP",
     "tutorial.body":         "Question each suspect about who else they saw that night. One of them is a witness — their statement will contradict the killer's alibi. That contradiction is your case.",
     "tutorial.ok":           "GOT IT",
+    "shortcuts.title":       "Keyboard Shortcuts",
+    "shortcuts.title-screen":"Title screen",
+    "shortcuts.newCase":     "New case",
+    "shortcuts.daily":       "Daily case",
+    "shortcuts.settings":    "Settings",
+    "shortcuts.lineup":      "Lineup",
+    "shortcuts.pickSuspect": "Question suspect by number",
+    "shortcuts.accuse":      "Make accusation",
+    "shortcuts.caseFile":    "Case file modal",
+    "shortcuts.interrog":    "Interrogation",
+    "shortcuts.notes":       "Toggle notes",
+    "shortcuts.backLineup":  "Back to lineup",
+    "shortcuts.global":      "Anywhere",
+    "shortcuts.toggleHelp":  "Toggle this help",
+    "shortcuts.close":       "Close any open overlay",
+    "convo.scrollLatest":    "↓ LATEST",
+    "settings.audioSection": "Audio",
+    "settings.audioDesc":    "The audio toggle in the top-right corner mutes / unmutes sound effects. Ambient background (rain + faint piano) is opt-in below.",
+    "settings.ambientLabel": "Ambient (rain + piano)",
   },
 
   zh: {
@@ -438,6 +632,26 @@ const STRINGS = {
     "settings.noKey":        "未保存密钥。AI 模式不可用；离线模式仍可正常游玩。",
     "settings.keySet":       (masked, justSaved) => (justSaved ? "已保存。" : "") +
                               `密钥已设置（${masked}）。审讯时即可启用 AI 模式。`,
+    "settings.statsSection": "统计与成就",
+    "settings.resetStats":   "清空统计",
+    "stats.played":          "总局数",
+    "stats.winRate":         "胜率",
+    "stats.bestStreak":      "最长连胜",
+    "stats.fewestQs":        "最少问题破案",
+    "stats.achievements":    "成就",
+    "stats.resetConfirm":    "确定要清空所有统计与成就吗？此操作不可撤销。",
+    "ach.firstSolve":        "首案告破",
+    "ach.firstSolve.desc":   "破第一桩案子。",
+    "ach.fiveQ":             "雷霆神探",
+    "ach.fiveQ.desc":        "在 5 个问题以内破案。",
+    "ach.hardSolve":         "交叉盘问者",
+    "ach.hardSolve.desc":    "破一桩 Hard 难度（带误导证人）的案子。",
+    "ach.noConfront":        "未对质而胜",
+    "ach.noConfront.desc":   "全程未使用「对质」按钮即破案。",
+    "ach.streak3":           "连战连捷",
+    "ach.streak3.desc":      "连续破三桩案子。",
+    "ach.tenSolves":         "老牌警官",
+    "ach.tenSolves.desc":    "累计破案 10 次。",
     "settings.aboutSection": "关于",
     "settings.aboutDesc":    "「夜雾审讯」主要是 Claude Code 的一个 skill（位于 .claude/skills/noir-interrogation/）。该 skill 中的脚本掌控凶手身份（通过 SHA-256 锁定）、生成嫌疑人卡片、并校验您的指控。本网页版用 JavaScript 重现了同一引擎。",
 
@@ -448,6 +662,25 @@ const STRINGS = {
     "tutorial.tag":          "首次开局 — 一句提示",
     "tutorial.body":         "每个嫌疑人都问一句「那晚你看见还有什么人」。五人之中有一个目击者——他的陈述会与凶手的不在场证明矛盾。那个矛盾就是你破案的关键。",
     "tutorial.ok":           "知道了",
+    "shortcuts.title":       "键盘快捷键",
+    "shortcuts.title-screen":"标题屏",
+    "shortcuts.newCase":     "新案件",
+    "shortcuts.daily":       "每日案件",
+    "shortcuts.settings":    "设置",
+    "shortcuts.lineup":      "嫌疑人名单",
+    "shortcuts.pickSuspect": "按编号审讯嫌疑人",
+    "shortcuts.accuse":      "提出指控",
+    "shortcuts.caseFile":    "案件档案",
+    "shortcuts.interrog":    "审讯室",
+    "shortcuts.notes":       "切换笔记",
+    "shortcuts.backLineup":  "返回名单",
+    "shortcuts.global":      "全局",
+    "shortcuts.toggleHelp":  "显示/隐藏此帮助",
+    "shortcuts.close":       "关闭任意覆盖层",
+    "convo.scrollLatest":    "↓ 最新",
+    "settings.audioSection": "音频",
+    "settings.audioDesc":    "右上角的音频按钮控制音效的开关。下面的背景环境音（雨声 + 远处钢琴）需要单独打开。",
+    "settings.ambientLabel": "背景环境音（雨声 + 钢琴）",
   },
 };
 
@@ -565,17 +798,23 @@ function renderBriefing() {
 function renderLineupGrid(containerId, onPick) {
   const grid = $(`#${containerId}`);
   grid.innerHTML = "";
-  STATE.case.suspects.forEach(suspect => {
+  STATE.case.suspects.forEach((suspect, i) => {
     const questioned = (STATE.case.questionCounts[suspect.name] || 0) > 0;
     const card = el("div",
       { class: `suspect-card${questioned ? " questioned" : ""}`,
         onclick: () => onPick(suspect) },
-      el("div", { class: "silhouette" }),
-      el("div", { class: "name" }, suspect.name),
-      el("div", { class: "occ" }, suspect.occupation),
-      el("div", { class: "status" },
-        questioned ? t("lineup.questioned") : t("lineup.notQuestioned")),
     );
+    const avatar = el("div", { class: "avatar" });
+    avatar.innerHTML = avatarSvg(suspect.occupation);
+    card.appendChild(avatar);
+    card.appendChild(el("div", { class: "name" }, suspect.name));
+    card.appendChild(el("div", { class: "occ" }, suspect.occupation));
+    card.appendChild(el("div", { class: "status" },
+      questioned ? t("lineup.questioned") : t("lineup.notQuestioned")));
+    // Show ordinal hint for keyboard nav
+    if (i < 9) {
+      card.appendChild(el("div", { class: "card-hotkey" }, String(i + 1)));
+    }
     grid.appendChild(card);
   });
 }
@@ -599,6 +838,8 @@ function renderInterrogation(suspect) {
   setMode(STATE.mode);
   refreshConfrontButton();
   closeEvidencePicker();
+  setupScrollWatcher();
+  hideScrollPill();
 }
 
 function refreshConfrontButton() {
@@ -700,6 +941,33 @@ function setMode(mode) {
       $("#ai-input").disabled = false;
     }
   }
+}
+
+function scrollConvoToBottom() {
+  const log = $("#conversation");
+  if (log) log.scrollTop = log.scrollHeight;
+  hideScrollPill();
+}
+
+function showScrollPill() {
+  const pill = $("#scroll-to-bottom");
+  if (pill) pill.hidden = false;
+}
+
+function hideScrollPill() {
+  const pill = $("#scroll-to-bottom");
+  if (pill) pill.hidden = true;
+}
+
+function setupScrollWatcher() {
+  const log = $("#conversation");
+  if (!log || log.dataset.scrollWatcherInit) return;
+  log.dataset.scrollWatcherInit = "1";
+  log.addEventListener("scroll", () => {
+    const distFromBottom = log.scrollHeight - log.scrollTop - log.clientHeight;
+    if (distFromBottom > 60) showScrollPill();
+    else hideScrollPill();
+  });
 }
 
 function addBubble(role, content, suspectName, scroll = true) {
@@ -882,8 +1150,49 @@ async function askAI() {
 }
 
 async function callLLM(suspect, userQuestion) {
-  if (STATE.provider === "google") return callGemini(suspect, userQuestion);
-  return callClaude(suspect, userQuestion);
+  let reply;
+  if (STATE.provider === "google") reply = await callGemini(suspect, userQuestion);
+  else                              reply = await callClaude(suspect, userQuestion);
+  return scrubLeak(reply, suspect, STATE.case);
+}
+
+// Anti-leak: post-process the LLM reply. If it contains a confession or
+// directly names the killer, swap it for a voice-flavored deflection
+// line. Catches the rare case where an LLM breaks the system-prompt
+// rules under pressure.
+const LEAK_PATTERNS = {
+  confession: [
+    /\bi (did it|killed (him|her|them|the victim)|murdered)\b/i,
+    /\bit was me\b/i,
+    /\bi (confess|admit)( that)? i killed\b/i,
+    /\bi'?m (the killer|guilty|the one who)\b/i,
+    /(我杀了|是我干的|是我下的手|是我害的|我承认.*杀|我招了|确实是我.*杀|的确是我.*杀)/,
+    /(我.{0,3}就是凶手|我.{0,3}就是杀人犯)/,
+  ],
+};
+
+function _escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+function detectLeak(reply, caseObj) {
+  for (const re of LEAK_PATTERNS.confession) {
+    if (re.test(reply)) return "confession";
+  }
+  // Naming-the-killer detection: 'the killer is X' / '凶手是 X' where X = actual killer
+  const k = _escapeRegex(caseObj._killer);
+  const enAccuse = new RegExp(`(killer|murderer)\\s+(is|was)\\s+(?:[^.]*\\b)?${k}\\b`, "i");
+  const zhAccuse = new RegExp(`(凶手|杀人.{0,2})(就)?是.{0,12}${k}`);
+  if (enAccuse.test(reply) || zhAccuse.test(reply)) return "accusation";
+  return null;
+}
+
+function scrubLeak(reply, suspect, caseObj) {
+  const issue = detectLeak(reply, caseObj);
+  if (!issue) return reply;
+  console.warn(`[noir] AI ${issue} detected, substituting deflection`);
+  // Use the suspect's voice-templated deflection. voiceFor returns
+  // {open, close, deflect, leave}; pick a deflect line.
+  const v = voiceFor(caseObj.lang, suspect.occupation);
+  return pick(v.deflect);
 }
 
 async function callClaude(suspect, userQuestion) {
@@ -990,6 +1299,7 @@ function renderAccusationGrid() {
 
 function showVerdict(v) {
   sfxStamp();
+  recordVerdict(v);
   $("#verdict-accused").textContent = v.accused;
   $("#verdict-killer").textContent  = v.actualKiller;
   // Reset the reveal panel for a fresh game-over screen
@@ -1144,7 +1454,70 @@ function closeCaseModal() {
   $("#case-modal").classList.remove("active");
 }
 
+function renderStats() {
+  const out = $("#stats-display");
+  if (!out) return;
+  const s = loadStats();
+  const winRate = s.played > 0 ? Math.round((s.solved / s.played) * 100) : 0;
+  out.innerHTML = "";
+
+  const top = el("div", { class: "stats-grid" },
+    el("div", { class: "stat-card" },
+      el("div", { class: "stat-num" }, String(s.played)),
+      el("div", { class: "stat-label" }, t("stats.played"))),
+    el("div", { class: "stat-card" },
+      el("div", { class: "stat-num" }, winRate + "%"),
+      el("div", { class: "stat-label" }, t("stats.winRate"))),
+    el("div", { class: "stat-card" },
+      el("div", { class: "stat-num" }, String(s.bestStreak)),
+      el("div", { class: "stat-label" }, t("stats.bestStreak"))),
+    el("div", { class: "stat-card" },
+      el("div", { class: "stat-num" }, s.fastestQuestions != null ? String(s.fastestQuestions) : "—"),
+      el("div", { class: "stat-label" }, t("stats.fewestQs"))),
+  );
+  out.appendChild(top);
+
+  // Per-difficulty breakdown
+  const diffs = el("div", { class: "stats-diffs" });
+  for (const d of ["easy", "normal", "hard"]) {
+    const stat = s.byDifficulty[d] || { played: 0, solved: 0 };
+    diffs.appendChild(el("div", { class: "stats-diff-row" },
+      el("span", { class: "stats-diff-label" }, t("diff." + d)),
+      el("span", { class: "stats-diff-val" }, `${stat.solved} / ${stat.played}`),
+    ));
+  }
+  out.appendChild(diffs);
+
+  // Achievements
+  const allAch = ["firstSolve", "fiveQ", "hardSolve", "noConfront", "streak3", "tenSolves"];
+  const earned = s.achievements || {};
+  const ach = el("div", { class: "achievements" });
+  ach.appendChild(el("div", { class: "achievements-header" }, t("stats.achievements")));
+  allAch.forEach(key => {
+    const got = !!earned[key];
+    ach.appendChild(el("div", {
+      class: "achievement" + (got ? " earned" : ""),
+      title: got ? earned[key] : "",
+    },
+      el("span", { class: "achievement-icon" }, got ? "★" : "·"),
+      el("div", { class: "achievement-text" },
+        el("div", { class: "achievement-title" }, t("ach." + key)),
+        el("div", { class: "achievement-desc" }, t("ach." + key + ".desc"))),
+    ));
+  });
+  out.appendChild(ach);
+}
+
+function resetStats() {
+  if (!confirm(t("stats.resetConfirm"))) return;
+  localStorage.removeItem(LS.stats);
+  renderStats();
+}
+
 function openSettings() {
+  renderStats();
+  // Reflect current ambient state in its toggle button
+  $$("[data-action=toggle-ambient]").forEach(b => b.classList.toggle("active", AUDIO.ambientOn));
   // Render the provider-specific model dropdown options first
   for (const provKey of Object.keys(PROVIDERS)) {
     const sel = $(`#${provKey}-model`);
@@ -1352,6 +1725,7 @@ function loadSettings() {
   }
 
   AUDIO.muted    = localStorage.getItem(LS.muted) === "1";
+  AUDIO.ambientOn = localStorage.getItem(LS.ambient) === "1";
 
   // URL params take precedence on first load (so shared links work).
   const params = new URLSearchParams(window.location.search);
@@ -1422,6 +1796,9 @@ function bind() {
         case "close-case-modal": closeCaseModal(); break;
         case "toggle-reveal":    toggleReveal();   break;
         case "dismiss-tutorial": dismissTutorial(); break;
+        case "reset-stats":      resetStats();      break;
+        case "scroll-to-bottom": scrollConvoToBottom(); break;
+        case "toggle-ambient":   ambientToggle();   break;
       }
       return;
     }
@@ -1446,8 +1823,60 @@ function bind() {
     if (e.key === "Escape") {
       closeSettings();
       closeCaseModal();
+      closeShortcutsHelp();
+      return;
+    }
+    // Ignore typing inside inputs / textareas
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    const interrogActive = $("#screen-interrogation").classList.contains("active");
+    const lineupActive   = $("#screen-lineup").classList.contains("active");
+    const titleActive    = $("#screen-title").classList.contains("active");
+
+    if (e.key === "?") {
+      e.preventDefault();
+      toggleShortcutsHelp();
+      return;
+    }
+
+    if (interrogActive) {
+      if (e.key === "n" || e.key === "N") { e.preventDefault(); toggleNotes(); return; }
+      if (e.key === "c" || e.key === "C") { e.preventDefault(); openCaseModal(); return; }
+      if (e.key === "l" || e.key === "L") { e.preventDefault(); gotoLineup(); return; }
+    }
+
+    if (lineupActive) {
+      // 1-5: pick a suspect by ordinal
+      const idx = parseInt(e.key, 10);
+      if (idx >= 1 && idx <= 9 && STATE.case && STATE.case.suspects[idx - 1]) {
+        e.preventDefault();
+        const suspect = STATE.case.suspects[idx - 1];
+        sfxCreak();
+        renderInterrogation(suspect);
+        show("screen-interrogation");
+        return;
+      }
+      if (e.key === "a" || e.key === "A") { e.preventDefault(); gotoAccusation(); return; }
+      if (e.key === "c" || e.key === "C") { e.preventDefault(); openCaseModal(); return; }
+    }
+
+    if (titleActive) {
+      if (e.key === "n" || e.key === "N") { e.preventDefault(); newCase();   return; }
+      if (e.key === "d" || e.key === "D") { e.preventDefault(); dailyCase(); return; }
+      if (e.key === "s" || e.key === "S") { e.preventDefault(); openSettings(); return; }
     }
   });
+
+  function toggleShortcutsHelp() {
+    const help = $("#shortcuts-help");
+    if (!help) return;
+    help.hidden = !help.hidden;
+  }
+  function closeShortcutsHelp() {
+    const help = $("#shortcuts-help");
+    if (help) help.hidden = true;
+  }
 
   $("#ai-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
