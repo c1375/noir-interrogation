@@ -402,8 +402,10 @@ const STRINGS = {
     "btn.backToLineup":      "← LINEUP",
     "interrog.detective":    "DETECTIVE",
     "interrog.modeLabel":    "Mode:",
-    "interrog.aiNoKey":      "Set your Claude API key in Settings to enable AI mode.",
-    "interrog.aiActive":     (model) => `AI mode active. Model: ${model}.`,
+    "mode.offline":          "PRESETS",
+    "mode.ai":               "PRESETS + AI",
+    "interrog.aiNoKey":      "Set an LLM API key in Settings to unlock free-text + LLM-powered preset answers.",
+    "interrog.aiActive":     (model) => `AI mode active. Preset clicks and free text both go through ${model}.`,
     "interrog.aiPlaceholder":"Ask anything... (Shift+Enter for newline)",
     "btn.send":              "SEND",
     "interrog.aiSetKeyFirst":"Set your Claude API key in Settings first.",
@@ -573,8 +575,10 @@ const STRINGS = {
     "btn.backToLineup":      "← 名单",
     "interrog.detective":    "警官",
     "interrog.modeLabel":    "模式：",
-    "interrog.aiNoKey":      "请在「设置」里填入 Claude API 密钥以启用 AI 模式。",
-    "interrog.aiActive":     (model) => `AI 模式已启用。模型：${model}。`,
+    "mode.offline":          "预设问题",
+    "mode.ai":               "预设 + AI 自由问",
+    "interrog.aiNoKey":      "在「设置」里填入 LLM API 密钥即可解锁自由打字提问，预设按钮也会改由 LLM 即兴回答。",
+    "interrog.aiActive":     (model) => `AI 已启用。预设按钮和自由文本都走 ${model}。`,
     "interrog.aiPlaceholder":"随便问（Shift+Enter 换行）……",
     "btn.send":              "发送",
     "interrog.aiSetKeyFirst":"请先在「设置」里填入 Claude API 密钥。",
@@ -925,7 +929,10 @@ function renderQuestionMenu() {
 function setMode(mode) {
   STATE.mode = mode;
   $$(".mode-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
-  $("#ask-offline").hidden = (mode !== "offline");
+  // Preset question buttons are ALWAYS visible -- in AI mode they route the
+  // canned question text through the LLM instead of the templated response.
+  // Only the free-text input is mode-gated.
+  $("#ask-offline").hidden = false;
   $("#ask-ai").hidden       = (mode !== "ai");
   if (mode === "ai") {
     const hint = $("#ai-hint");
@@ -1085,7 +1092,7 @@ function renderNotes() {
 
 /* ============================== offline mode ============================== */
 
-function askOffline(questionId) {
+function askPreset(questionId) {
   const suspect = STATE.currentSuspect;
   const menu = getQuestionMenu(STATE.case.lang);
   const qLabel = menu.find(q => q.id === questionId).label;
@@ -1093,6 +1100,32 @@ function askOffline(questionId) {
   addBubble("detective", qLabel, suspect.name);
   pushTurn("detective", qLabel);
 
+  // In AI mode (with a key), route the preset question through the LLM so
+  // the player gets richer in-character improvisation; otherwise fall back
+  // to the templated offline response.
+  if (STATE.mode === "ai" && activeKey()) {
+    const thinking = addBubble("thinking", "", suspect.name);
+    callLLM(suspect, qLabel).then(reply => {
+      thinking.remove();
+      addBubble("suspect", reply, suspect.name);
+      pushTurn("suspect", reply);
+      addNote(suspect.name, questionId, qLabel, reply);
+      STATE.case.questionCounts[suspect.name] =
+        (STATE.case.questionCounts[suspect.name] || 0) + 1;
+      maybeCollectEvidence(suspect);
+    }).catch(err => {
+      thinking.remove();
+      addBubble("system",
+        `${t("interrog.errorPrefix")}${err.message}${t("interrog.errorSuffix")}`,
+        suspect.name);
+    });
+    if (questionId === "leave") {
+      setTimeout(() => show("screen-lineup"), 1500);
+    }
+    return;
+  }
+
+  // OFFLINE mode (or AI without a key) — use the templated response.
   const response = generateOfflineResponse(STATE.case, suspect, questionId);
 
   const thinking = addBubble("thinking", "", suspect.name);
@@ -1108,6 +1141,9 @@ function askOffline(questionId) {
     setTimeout(() => show("screen-lineup"), 1200);
   }
 }
+
+// Backwards-compat alias: the function used to be named askOffline.
+const askOffline = askPreset;
 
 /* ============================== AI mode ============================== */
 
