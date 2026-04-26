@@ -1033,6 +1033,7 @@ button:disabled {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 8px;
 }
+.ask-offline[hidden] { display: none; }
 
 .ask-offline button {
   background: transparent;
@@ -1063,6 +1064,7 @@ button:disabled {
   gap: 10px;
   align-items: end;
 }
+.ask-ai[hidden] { display: none; }
 
 .ask-ai textarea {
   font-family: inherit;
@@ -1306,6 +1308,7 @@ button:disabled {
   justify-content: center;
   padding: 20px;
 }
+.shortcuts-help[hidden] { display: none; }
 
 .shortcuts-content {
   background: var(--paper);
