@@ -191,12 +191,15 @@ FALSE_ALIBIS = {
     ],
 }
 
+# All true alibis must be plausible for ANY occupation. Avoid
+# occupation-specific stories (e.g. "on stage at the club") which break
+# immersion when assigned to a journalist or doctor.
 TRUE_ALIBIS = {
     "en": [
         "I was playing cards at the Blue Iris -- three witnesses, ask any of them.",
         "I was arguing with my spouse so loud the whole building heard. Check with the super.",
         "I was at the hospital, getting my wrist set. There's a chart with my name on it.",
-        "I was on stage at the Magnolia Room, in front of fifty paying customers.",
+        "I was at a private supper at the Sterling estate -- six guests will vouch, and the butler signed me in.",
         "I got picked up by the cops for public drunkenness around then. The Twelfth Precinct logged me in.",
         "I was at the cathedral for the late vigil. Father Donovan can confirm it.",
     ],
@@ -204,7 +207,7 @@ TRUE_ALIBIS = {
         "我在百乐门打牌，三个证人，您随便问。",
         "我和我家那位大吵大闹整层楼都听见了，您问门房。",
         "我在公济医院打石膏，挂号单上有名字。",
-        "我在百乐门舞台上唱戏，五十个买票的看着。",
+        "我在静安寺路一位夫人家里赴晚宴，宾客六七位都见过我，主家可以作证。",
         "那时候我被巡捕房拘了一晚上，记录在案。",
         "我在静安寺参加晚课，住持师傅可以作证。",
     ],
