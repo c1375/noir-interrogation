@@ -54,7 +54,7 @@ const POOLS_EN = {
     "the basement speakeasy",
   ],
   redHerringSecrets: [
-    "I've been embezzling money from the victim's accounts",
+    "the victim had caught me out in something I'd rather no one knew, and I lived in dread he'd talk",
     "I was having an affair with the victim's spouse",
     "I owe a dangerous loan shark twenty grand",
     "I was blackmailing a city official with photographs",
@@ -67,7 +67,7 @@ const POOLS_EN = {
     "I was at home alone all night, reading.",
     "I was at the cinema watching the late picture -- bought a ticket and everything.",
     "I was at the diner across town, the one open all hours.",
-    "I was driving along the coast road, just clearing my head.",
+    "I was walking the river road alone, just clearing my head.",
     "I was asleep in my apartment by ten -- slept like the dead.",
   ],
   // All true alibis must be plausible for ANY occupation. Occupation-
@@ -149,7 +149,7 @@ const POOLS_ZH = {
     "黄浦江边仓库", "屋顶花园", "地下舞厅",
   ],
   redHerringSecrets: [
-    "我从死者账上挪过钱",
+    "死者抓到了我做过的一件不光彩的事，我怕他抖出去",
     "我和死者的太太有私情",
     "我欠了大流氓两万银元",
     "我捏着市府某老爷的把柄在敲他",
@@ -162,7 +162,7 @@ const POOLS_ZH = {
     "我那晚一个人在家看书。",
     "我在大光明戏院看夜场，戏票还在。",
     "我去了法租界那家通宵小馆子。",
-    "我开车沿外滩兜风散心。",
+    "我一个人沿着霞飞路走到深夜，散心。",
     "我十点多就睡了，跟死了一样。",
   ],
   // 必须是任何职业都说得通的。原来的「我在百乐门舞台上唱戏」只适合舞女/影后，
