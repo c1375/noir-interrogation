@@ -1168,6 +1168,51 @@ button:disabled {
   box-shadow: var(--shadow);
 }
 
+.case-modal-content {
+  padding: 0;
+}
+
+.case-modal-header {
+  background: var(--ink);
+  color: var(--paper);
+  padding: 14px 24px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  font-weight: bold;
+  letter-spacing: 0.15em;
+  font-size: 0.85rem;
+  border-bottom: 2px solid var(--brass);
+}
+
+.case-modal-content > h2,
+.case-modal-content > h3,
+.case-modal-content > dl,
+.case-modal-content > ul,
+.case-modal-content > .commitment-box {
+  margin-left: 32px;
+  margin-right: 32px;
+}
+
+.case-modal-content > h2 {
+  margin-top: 24px;
+  border-bottom: 1px dashed var(--ink-fade);
+  padding-bottom: 10px;
+}
+
+.case-modal-content > h3 {
+  margin-top: 20px;
+}
+
+.case-modal-content > .commitment-box {
+  margin-bottom: 26px;
+}
+
+.case-modal-content .modal-close {
+  color: var(--paper);
+  z-index: 1;
+}
+
 .modal-close {
   position: absolute;
   top: 12px;

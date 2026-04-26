@@ -982,6 +982,34 @@ function showVerdict(v) {
 function activeKey()    { return STATE.apiKeys[STATE.provider] || null; }
 function activeModel()  { return STATE.apiModels[STATE.provider]; }
 
+function openCaseModal() {
+  if (!STATE.case) return;
+  const c = STATE.case;
+  $("#case-modal-id").textContent = "#" + c.caseId;
+  $("#case-modal-victim").textContent = `${c.victim.name}, ${c.victim.title}`;
+  $("#case-modal-scene").textContent = c.scene;
+  $("#case-modal-tod").textContent = c.timeOfDeath;
+  $("#case-modal-weapon").textContent = c.weaponAtScene;
+  $("#case-modal-hash").textContent = c.answerHash;
+  const diffEl = $("#case-modal-difficulty");
+  if (diffEl) diffEl.textContent = t("diff." + (c.difficulty || "normal"));
+
+  const sep = STATE.lang === "zh" ? "·" : "--";
+  const roster = $("#case-modal-roster");
+  roster.innerHTML = "";
+  c.suspects.forEach((s, i) => {
+    roster.appendChild(el("li", {},
+      el("span", { class: "roster-name" }, `${i + 1}. ${s.name}`),
+      el("span", { class: "roster-occ" }, ` ${sep} ${s.occupation}`),
+    ));
+  });
+  $("#case-modal").classList.add("active");
+}
+
+function closeCaseModal() {
+  $("#case-modal").classList.remove("active");
+}
+
 function openSettings() {
   // Render the provider-specific model dropdown options first
   for (const provKey of Object.keys(PROVIDERS)) {
@@ -1226,6 +1254,8 @@ function bind() {
         case "open-evidence-picker": openEvidencePicker(); break;
         case "toggle-audio":  audioToggle();      break;
         case "set-provider":  setProvider(btn.dataset.provider); break;
+        case "open-case-modal":  openCaseModal();  break;
+        case "close-case-modal": closeCaseModal(); break;
       }
       return;
     }
@@ -1242,9 +1272,15 @@ function bind() {
   $("#settings-modal").addEventListener("click", (e) => {
     if (e.target.id === "settings-modal") closeSettings();
   });
+  $("#case-modal").addEventListener("click", (e) => {
+    if (e.target.id === "case-modal") closeCaseModal();
+  });
 
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeSettings();
+    if (e.key === "Escape") {
+      closeSettings();
+      closeCaseModal();
+    }
   });
 
   $("#ai-input").addEventListener("keydown", (e) => {
