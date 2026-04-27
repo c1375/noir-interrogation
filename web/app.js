@@ -12,9 +12,9 @@ const STATE = {
   notesActiveTab: null,       // suspect name shown in panel
   evidence: [],               // [{source, text, namedSuspect, isFalse}]
   evidencePickerOpen: false,
-  provider: "anthropic",      // "anthropic" | "google"
-  apiKeys:   { anthropic: null, google: null },
-  apiModels: { anthropic: "claude-haiku-4-5-20251001", google: "gemini-2.5-flash" },
+  provider: "anthropic",      // "anthropic" | "google" | "qwen"
+  apiKeys:   { anthropic: null, google: null, qwen: null },
+  apiModels: { anthropic: "claude-haiku-4-5-20251001", google: "gemini-2.5-flash", qwen: "qwen-plus" },
   mode: "offline",            // "offline" | "ai"
   lang: "en",                 // "en" | "zh"
   difficulty: "normal",       // "easy" | "normal" | "hard"
@@ -31,6 +31,8 @@ const LS = {
   anthropicModel:   "noir.anthropic.model",
   googleKey:        "noir.google.key",
   googleModel:      "noir.google.model",
+  qwenKey:          "noir.qwen.key",
+  qwenModel:        "noir.qwen.model",
   lang:             "noir.lang",
   difficulty:       "noir.difficulty",
   muted:            "noir.muted",
@@ -119,6 +121,18 @@ const PROVIDERS = {
     models: [
       { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (free tier)" },
       { value: "gemini-2.5-pro",   label: "Gemini 2.5 Pro (free tier, slower)" },
+    ],
+  },
+  qwen: {
+    label: "Alibaba Qwen 通义千问",
+    placeholder: "sk-...",
+    docUrl: "https://bailian.console.aliyun.com/?apiKey=1",
+    free: true,
+    models: [
+      { value: "qwen-turbo", label: "Qwen Turbo (free tier, fastest)" },
+      { value: "qwen-plus",  label: "Qwen Plus (cheap, balanced)" },
+      { value: "qwen-max",   label: "Qwen Max (most capable)" },
+      { value: "qwen3-max",  label: "Qwen3 Max (latest)" },
     ],
   },
 };
@@ -464,6 +478,7 @@ const STRINGS = {
     "settings.freeTier":     "free tier",
     "settings.getKeyAnthropic": "Get an Anthropic API key →",
     "settings.getKeyGoogle":    "Get a free Google AI Studio key →",
+    "settings.getKeyQwen":      "Get a Qwen API key from 阿里云百炼 →",
     "settings.apiKey":       "API key",
     "settings.model":        "Model",
     "btn.save":              "SAVE",
@@ -641,6 +656,7 @@ const STRINGS = {
     "settings.freeTier":     "有免费额度",
     "settings.getKeyAnthropic": "获取 Anthropic API key →",
     "settings.getKeyGoogle":    "免费获取 Google AI Studio key →",
+    "settings.getKeyQwen":      "在阿里云百炼获取 Qwen API key →",
     "settings.apiKey":       "API 密钥",
     "settings.model":        "模型",
     "btn.save":              "保存",
@@ -1235,9 +1251,66 @@ async function askAI() {
 
 async function callLLM(suspect, userQuestion) {
   let reply;
-  if (STATE.provider === "google") reply = await callGemini(suspect, userQuestion);
-  else                              reply = await callClaude(suspect, userQuestion);
+  if (STATE.provider === "google")     reply = await callGemini(suspect, userQuestion);
+  else if (STATE.provider === "qwen")  reply = await callQwen(suspect, userQuestion);
+  else                                  reply = await callClaude(suspect, userQuestion);
   return scrubLeak(reply, suspect, STATE.case);
+}
+
+// ---- Qwen (Alibaba 通义千问) via DashScope OpenAI-compatible endpoint ----
+const QWEN_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+
+async function _callQwenChat(messages, maxTokens, temperature) {
+  const res = await fetch(QWEN_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${STATE.apiKeys.qwen}`,
+    },
+    body: JSON.stringify({
+      model: STATE.apiModels.qwen,
+      messages,
+      max_tokens: maxTokens,
+      temperature,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    let detail = text;
+    try { const j = JSON.parse(text); detail = j.error?.message || text; } catch (_) {}
+    throw new Error(`Qwen ${res.status}: ${detail.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  const choice = data.choices?.[0];
+  const reply = choice?.message?.content || "";
+  if (choice?.finish_reason === "length") {
+    console.warn("[noir] Qwen hit max_tokens; response may be truncated. Got " + reply.length + " chars.");
+  }
+  if (!reply.trim()) {
+    throw new Error(`Qwen returned no text (finish: ${choice?.finish_reason || "unknown"}).`);
+  }
+  return reply.trim();
+}
+
+async function callQwen(suspect, userQuestion) {
+  const system = buildSystemPromptForSuspect(STATE.case, suspect);
+  const history = (STATE.conversations[suspect.name] || []).filter(
+    t => t.role === "detective" || t.role === "suspect"
+  );
+  const messages = [{ role: "system", content: system }];
+  for (const turn of history) {
+    if (turn.role === "detective") messages.push({ role: "user", content: turn.content });
+    else if (turn.role === "suspect") messages.push({ role: "assistant", content: turn.content });
+  }
+  return _callQwenChat(messages, 800, 0.9);
+}
+
+async function _callQwenRaw(systemText, userText, maxTokens) {
+  const messages = [
+    { role: "system", content: systemText },
+    { role: "user", content: userText },
+  ];
+  return _callQwenChat(messages, maxTokens, 0.85);
 }
 
 // Raw single-shot LLM call (no per-suspect roleplay constraints) used for
@@ -1245,6 +1318,7 @@ async function callLLM(suspect, userQuestion) {
 async function callLLMRaw(system, user, maxTokens = 1000) {
   if (!activeKey()) throw new Error("no API key");
   if (STATE.provider === "google") return _callGeminiRaw(system, user, maxTokens);
+  if (STATE.provider === "qwen")   return _callQwenRaw(system, user, maxTokens);
   return _callClaudeRaw(system, user, maxTokens);
 }
 
@@ -1867,13 +1941,10 @@ function saveApiKey() {
   }
   STATE.apiKeys[provider] = key;
   STATE.apiModels[provider] = model;
-  if (provider === "anthropic") {
-    localStorage.setItem(LS.anthropicKey, key);
-    localStorage.setItem(LS.anthropicModel, model);
-  } else {
-    localStorage.setItem(LS.googleKey, key);
-    localStorage.setItem(LS.googleModel, model);
-  }
+  const lsKey = { anthropic: LS.anthropicKey, google: LS.googleKey, qwen: LS.qwenKey }[provider];
+  const lsModel = { anthropic: LS.anthropicModel, google: LS.googleModel, qwen: LS.qwenModel }[provider];
+  localStorage.setItem(lsKey, key);
+  localStorage.setItem(lsModel, model);
   updateApiStatus(true);
   setMode(STATE.mode);  // refresh AI hint
 }
@@ -1881,8 +1952,8 @@ function saveApiKey() {
 function clearApiKey() {
   const provider = STATE.provider;
   STATE.apiKeys[provider] = null;
-  if (provider === "anthropic") localStorage.removeItem(LS.anthropicKey);
-  else                          localStorage.removeItem(LS.googleKey);
+  const lsKey = { anthropic: LS.anthropicKey, google: LS.googleKey, qwen: LS.qwenKey }[provider];
+  localStorage.removeItem(lsKey);
   const keyEl = $(`#${provider}-key`);
   if (keyEl) keyEl.value = "";
   updateApiStatus();
@@ -2000,8 +2071,10 @@ function loadSettings() {
 
   STATE.apiKeys.anthropic = localStorage.getItem(LS.anthropicKey);
   STATE.apiKeys.google    = localStorage.getItem(LS.googleKey);
+  STATE.apiKeys.qwen      = localStorage.getItem(LS.qwenKey);
   STATE.apiModels.anthropic = localStorage.getItem(LS.anthropicModel) || "claude-haiku-4-5-20251001";
   STATE.apiModels.google    = localStorage.getItem(LS.googleModel)    || "gemini-2.5-flash";
+  STATE.apiModels.qwen      = localStorage.getItem(LS.qwenModel)      || "qwen-plus";
 
   // One-time migration: legacy single-key noir.apiKey was Anthropic.
   const legacyKey = localStorage.getItem(LS.legacyApiKey);

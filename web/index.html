@@ -310,6 +310,10 @@
             <span class="provider-name">Google Gemini</span>
             <span class="provider-badge free" data-i18n="settings.freeTier">free tier</span>
           </button>
+          <button data-action="set-provider" data-provider="qwen">
+            <span class="provider-name">Qwen 通义千问</span>
+            <span class="provider-badge free" data-i18n="settings.freeTier">free tier</span>
+          </button>
         </div>
 
         <div class="provider-config" data-provider="anthropic">
@@ -331,6 +335,17 @@
           <p class="provider-link">
             <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener"
                data-i18n="settings.getKeyGoogle">Get a free Google AI Studio key →</a>
+          </p>
+        </div>
+
+        <div class="provider-config" data-provider="qwen" hidden>
+          <label for="qwen-key" data-i18n="settings.apiKey">API key</label>
+          <input id="qwen-key" type="password" placeholder="sk-...">
+          <label for="qwen-model" data-i18n="settings.model">Model</label>
+          <select id="qwen-model"></select>
+          <p class="provider-link">
+            <a href="https://bailian.console.aliyun.com/?apiKey=1" target="_blank" rel="noopener"
+               data-i18n="settings.getKeyQwen">Get a Qwen API key from 阿里云百炼 →</a>
           </p>
         </div>
 
