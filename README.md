@@ -90,7 +90,7 @@ hw5-Yizhou Zhang/
     ├── index.html
     ├── styles.css                             # noir aesthetic + period typography
     ├── engine.js                              # JS port of noir.py (case gen, SHA-256, templates)
-    └── app.js                                 # UI state machine + Anthropic/Gemini API + i18n
+    └── app.js                                 # UI state machine + Anthropic/Gemini/Qwen API + i18n
 ```
 
 ---
@@ -141,6 +141,8 @@ cd web && python -m http.server 8000
 Repo Settings → Pages → source `main` branch, `/web` folder. Site goes live at `https://<user>.github.io/<repo>/`.
 
 ### Web feature set
+
+> **Note:** the table below lists features of the **web port only**. The core skill (`noir.py`) is intentionally simpler — it ships only the case generation, suspect cards, hash commitment, accusation/verify loop, and the bilingual / difficulty toggles. Web-only additions: streaming responses, refresh-resume, TIMELINE view, Final Showdown, per-case motive/method specifics, daily case + stats, atmosphere audio. The skill could grow these later but the assignment deliverable is the lean, prose-driven version.
 
 | | |
 |---|---|
