@@ -1292,8 +1292,20 @@ async function _callGeminiRaw(systemText, userText, maxTokens) {
     throw new Error(`Gemini ${res.status}: ${text.slice(0, 200)}`);
   }
   const data = await res.json();
-  const parts = data.candidates?.[0]?.content?.parts || [];
-  return parts.map(p => p.text || "").join("").trim();
+  const cand = data.candidates?.[0];
+  const reason = cand?.finishReason;
+  const parts = cand?.content?.parts || [];
+  const text = parts.map(p => p.text || "").join("").trim();
+  if (reason === "MAX_TOKENS") {
+    console.warn("[noir] Gemini hit MAX_TOKENS; response may be truncated. Got " + text.length + " chars.");
+  }
+  if (reason === "SAFETY") {
+    throw new Error("Gemini safety filter blocked the narrative output.");
+  }
+  if (!text) {
+    throw new Error(`Gemini returned no text (finish reason: ${reason || "unknown"}).`);
+  }
+  return text;
 }
 
 // Anti-leak: post-process the LLM reply. If it contains a confession or
@@ -1452,7 +1464,7 @@ async function generateOpener(caseObj) {
   const user = (lang === "zh")
     ? `受害人: ${caseObj.victim.name}, ${caseObj.victim.title}\n现场: ${caseObj.scene}\n现场凶器: ${caseObj.weaponAtScene}\n死亡时间: ${caseObj.timeOfDeath}`
     : `Victim: ${caseObj.victim.name}, ${caseObj.victim.title}\nScene: ${caseObj.scene}\nWeapon at scene: ${caseObj.weaponAtScene}\nTime of death: ${caseObj.timeOfDeath}`;
-  const reply = await callLLMRaw(system, user, 400);
+  const reply = await callLLMRaw(system, user, 800);
   caseObj.narrativeOpener = reply;
   return reply;
 }
@@ -1533,7 +1545,7 @@ async function generateRevealMonologue(caseObj) {
     ? "你扮演一桩 1930 年代民国上海 noir 凶案中的侦探, 案子刚破, 现在念结案独白。200-280 字, 用上海腔/民国调调。串起这些信息: 凶手 + 动机, 目击者那晚看到什么, 凶器为什么在现场, 每个无辜嫌疑人的红鲱鱼私事各是什么 (这些私事都跟凶案无关, 只是让他们看上去可疑)。用第一人称 (「我知道是 X 的时候……」)。不出戏, 不提脚本/游戏。直接输出独白, 不要引号或前后缀。"
     : "You are the detective in a 1940s noir film delivering a closing monologue, having just solved the case. Write 200-280 words in noir voice. Tie together: who the killer is + their motive, what the witness saw, why the weapon was at the scene, and (briefly) what each non-killer's red herring secret was actually about — make clear those secrets were unrelated to the murder, only making them LOOK suspicious. Speak in first person ('I knew it was X when...'). Do not break character. Do not mention the script or game. Output ONLY the monologue, no quotation marks, no preface.";
   const user = _buildRevealUserPayload(caseObj);
-  const reply = await callLLMRaw(system, user, 1200);
+  const reply = await callLLMRaw(system, user, 2000);
   caseObj.narrativeReveal = reply;
   return reply;
 }
