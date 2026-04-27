@@ -557,13 +557,25 @@ const STRINGS = {
     "btn.backToInterrog":    "BACK TO INTERROGATION",
     "accusation.confirm":    (name) => `Accuse ${name}? This ends the case.`,
 
+    "showdown.alibiLabel":   "Their claimed alibi:",
+    "showdown.instructions": "Pick the evidence you'll present. At least one piece that names them is what cracks a confession.",
+    "showdown.noEvidence":   "You collected no witness statements. You can still present the accusation, but you'll have nothing to back it up.",
+    "showdown.present":      "PRESENT THE CASE",
+    "showdown.back":         "← Pick a different suspect",
+    "showdown.seeVerdict":   "SEE THE VERDICT",
+    "showdown.stamp.confession": "CONFESSION",
+    "showdown.stamp.escape":     "WALKED FREE",
+    "showdown.stamp.dismissed":  "DISMISSED",
+
     "verdict.title":         "Verdict",
     "verdict.solved":        "SOLVED",
     "verdict.failed":        "FAILED",
+    "verdict.escaped":       "WALKED FREE",
     "verdict.youAccused":    "You accused:",
     "verdict.actualKiller":  "Actual killer:",
     "verdict.win":           "Case closed. The killer's going down.",
     "verdict.loss":          "Wrong call. The killer walks free.",
+    "verdict.lossEscape":    "Right person, wrong proof. They walked.",
     "verdict.hashLabel":     "HASH VERIFICATION",
     "verdict.committed":     "committed:",
     "verdict.computed":      "computed:",
@@ -747,13 +759,25 @@ const STRINGS = {
     "btn.backToInterrog":    "返回审讯",
     "accusation.confirm":    (name) => `您要指控 ${name} 吗？这将结束本案。`,
 
+    "showdown.alibiLabel":   "他/她声称的不在场证明：",
+    "showdown.instructions": "勾选你要当面甩出的证据。至少要有一条点了他/她名字的，才能逼出认罪。",
+    "showdown.noEvidence":   "你一条目击证词都没收集到。可以硬指，但你手头什么硬料也没有。",
+    "showdown.present":      "甩出你的指控",
+    "showdown.back":         "← 改指别人",
+    "showdown.seeVerdict":   "查看裁决",
+    "showdown.stamp.confession": "认罪",
+    "showdown.stamp.escape":     "逍遥法外",
+    "showdown.stamp.dismissed":  "驳回",
+
     "verdict.title":         "裁决",
     "verdict.solved":        "破案",
     "verdict.failed":        "失手",
+    "verdict.escaped":       "逍遥法外",
     "verdict.youAccused":    "您指控的是：",
     "verdict.actualKiller":  "真凶：",
     "verdict.win":           "案子破了。凶手插翅难飞。",
     "verdict.loss":          "猜错了。凶手逍遥法外。",
+    "verdict.lossEscape":    "认对了人，证据不够硬，让他走脱了。",
     "verdict.hashLabel":     "哈希校验",
     "verdict.committed":     "承诺值：",
     "verdict.computed":      "计算值：",
@@ -2000,15 +2024,199 @@ async function generateRevealMonologue(caseObj, opts = {}) {
   return reply;
 }
 
-/* ============================== accusation + verdict ============================== */
+/* ============================== accusation + showdown + verdict ============================== */
 
 function renderAccusationGrid() {
-  renderLineupGrid("accusation-grid", async (suspect) => {
-    if (!confirm(t("accusation.confirm", suspect.name))) return;
-    const verdict = await verifyAccusation(STATE.case, suspect.name);
-    STATE.case.status = verdict.correct ? "solved" : "failed";
-    showVerdict(verdict);
+  renderLineupGrid("accusation-grid", (suspect) => {
+    gotoShowdown(suspect);
   });
+}
+
+/* ----- Final Showdown -----
+   The player picks the accused on the accusation grid, then transitions here:
+   pick which collected statements to present, then PRESENT THE CASE. The
+   accused's LLM-streamed monologue plays out one of three scripted outcomes
+   (confession / escape / dismissed) before the existing verdict screen fires.
+   Outcome is decided by engine.resolveShowdown(); the LLM only performs. */
+
+function gotoShowdown(suspect) {
+  STATE.showdown = {
+    accused: suspect,
+    selected: new Set(STATE.evidence.map((_, i) => i)), // pre-select all evidence
+    verdict: null,
+    monologuePlayed: false,
+  };
+  renderShowdown();
+  show("screen-showdown");
+}
+
+function renderShowdown() {
+  const { accused } = STATE.showdown;
+  $("#showdown-name").textContent = accused.name;
+  $("#showdown-occ").textContent  = accused.occupation;
+  const av = $("#showdown-avatar");
+  av.innerHTML = avatarSvg(accused.occupation);
+  $("#showdown-alibi").textContent = `"${accused.claimedAlibi}"`;
+
+  const evWrap = $("#showdown-evidence");
+  evWrap.innerHTML = "";
+  if (STATE.evidence.length === 0) {
+    evWrap.appendChild(el("p", { class: "showdown-no-evidence" },
+      t("showdown.noEvidence")));
+  } else {
+    STATE.evidence.forEach((ev, i) => {
+      const checked = STATE.showdown.selected.has(i);
+      const card = el("label",
+        { class: "showdown-evidence-item" + (checked ? " selected" : "") });
+      const cb = el("input", { type: "checkbox" });
+      if (checked) cb.checked = true;
+      cb.addEventListener("change", () => {
+        if (cb.checked) STATE.showdown.selected.add(i);
+        else STATE.showdown.selected.delete(i);
+        card.classList.toggle("selected", cb.checked);
+      });
+      card.appendChild(cb);
+      const body = el("div", { class: "showdown-evidence-body" });
+      body.appendChild(el("div", { class: "showdown-evidence-source" },
+        t("confront.fromLabel", ev.source)));
+      body.appendChild(el("div", { class: "showdown-evidence-text" },
+        `"${ev.text}"`));
+      if (ev.namedSuspect) {
+        body.appendChild(el("div", { class: "showdown-evidence-pill" },
+          t("timeline.namesPill", ev.namedSuspect)));
+      }
+      card.appendChild(body);
+      evWrap.appendChild(card);
+    });
+  }
+
+  // Reset monologue area for a fresh entry
+  $("#showdown-prep").hidden = false;
+  $("#showdown-monologue").hidden = true;
+  $("#showdown-bubble").innerHTML = "";
+  $("#showdown-stamp").textContent = "";
+  $("#showdown-stamp").className = "showdown-stamp";
+  $("#showdown-verdict-btn").hidden = true;
+}
+
+async function presentTheCase() {
+  if (!STATE.showdown || STATE.showdown.monologuePlayed) return;
+  if (STATE.askInFlight) return;
+  const { accused } = STATE.showdown;
+  const presented = [...STATE.showdown.selected].map(i => STATE.evidence[i]).filter(Boolean);
+
+  const verdict = await resolveShowdown(STATE.case, accused.name, presented);
+  STATE.case.status = verdict.won ? "solved" : "failed";
+  STATE.showdown.verdict = verdict;
+  STATE.showdown.monologuePlayed = true;
+
+  // Swap the prep panel out for the monologue panel
+  $("#showdown-prep").hidden = true;
+  const mono = $("#showdown-monologue");
+  mono.hidden = false;
+  const stamp = $("#showdown-stamp");
+  stamp.textContent = t("showdown.stamp." + verdict.outcome);
+  stamp.className = "showdown-stamp " + verdict.outcome;
+  sfxStamp();
+
+  const bubbleEl = $("#showdown-bubble");
+  bubbleEl.innerHTML = "";
+  const textNode = document.createTextNode("");
+  bubbleEl.appendChild(textNode);
+  bubbleEl.classList.add("streaming");
+
+  STATE.askInFlight = true;
+  abortInterrogation();
+  const ctrl = new AbortController();
+  STATE.activeAbort = ctrl;
+
+  const onDelta = (chunk) => {
+    if (ctrl.signal.aborted) return;
+    textNode.appendData(chunk);
+    // Auto-scroll the bubble area
+    bubbleEl.scrollTop = bubbleEl.scrollHeight;
+  };
+
+  try {
+    const system = buildShowdownSystemPrompt(STATE.case, accused, verdict);
+    const user   = buildShowdownUserPrompt(STATE.case, accused, presented, verdict);
+    const reply = await callLLMRaw(system, user, 1200, { signal: ctrl.signal, onDelta });
+    if (textNode.data !== reply) textNode.data = reply;
+  } catch (err) {
+    if (!isAbortError(err)) {
+      // Fallback: show a templated line so the player still gets closure.
+      console.warn("[noir] showdown LLM failed:", err.message);
+      textNode.data = textNode.data ||
+        `[${err.message}]\n\n${fallbackShowdownLine(STATE.case, accused, verdict)}`;
+    }
+  } finally {
+    bubbleEl.classList.remove("streaming");
+    if (STATE.activeAbort === ctrl) STATE.activeAbort = null;
+    STATE.askInFlight = false;
+    $("#showdown-verdict-btn").hidden = false;
+  }
+}
+
+function buildShowdownSystemPrompt(caseObj, accused, verdict) {
+  const lang = caseObj.lang;
+  const role = verdict.outcome === "dismissed"
+    ? "innocent"
+    : (verdict.outcome === "confession" ? "killer-confession" : "killer-escape");
+
+  if (lang === "zh") {
+    if (role === "killer-confession") {
+      return `你扮演一桩 1930 年代民国上海 noir 凶案中的真凶 —— ${accused.name}（${accused.occupation}），刚被侦探当面指控并出示了点你名的证据。用上海腔/民国调调写一段 5-8 句的最终独白：先一两句还在虚张声势，然后心理崩溃、自白凶杀的动机和大致经过。第一人称。不许出戏、不许提脚本/游戏。直接输出独白本身，不要引号或前后缀。`;
+    }
+    if (role === "killer-escape") {
+      return `你扮演一桩 1930 年代民国上海 noir 凶案中的真凶 —— ${accused.name}（${accused.occupation}），刚被侦探指控但他拿不出能直接点你名的证据。用上海腔/民国调调写一段 4-6 句独白：冷笑、嘲讽对方的「证据」薄弱、强调你的不在场说辞，最后甩一句让侦探脊背发凉的话扬长而去（你这次逃了，但话里要让人感觉到你**确实是**凶手）。第一人称。不许直接承认。直接输出独白，不要前后缀。`;
+    }
+    // innocent
+    return `你扮演 ${accused.name}（${accused.occupation}），刚被侦探当面错认为凶手。你**确实没杀人**，你的不在场证明是真的。用上海腔/民国调调写一段 4-6 句独白：先愤怒/受伤，再用你的不在场证明反驳，最后讽刺侦探看错了人。第一人称。不许承认任何凶杀。直接输出独白，不要前后缀。`;
+  }
+  if (role === "killer-confession") {
+    return `You are ${accused.name} (${accused.occupation}), the killer in a 1940s American noir murder. The detective has just accused you in person and presented evidence that names you. Deliver a 5-8 sentence final monologue in noir voice: first a beat or two of bluster, then the dam breaks — confess the kill, your motive, and the rough how. First person. Do not break character or mention any "script" / "game". Output ONLY the monologue, no quotation marks, no preface.`;
+  }
+  if (role === "killer-escape") {
+    return `You are ${accused.name} (${accused.occupation}), the actual killer in a 1940s American noir mystery. The detective accused you, but they couldn't bring evidence that names you. Deliver a 4-6 sentence noir monologue: cold smile, mock the thinness of their case, lean on your alibi, and walk out free with one parting line that makes the detective realize (privately) they were right all along — but you got away. First person. Do NOT confess outright. Output ONLY the monologue, no preface.`;
+  }
+  return `You are ${accused.name} (${accused.occupation}). The detective just wrongly accused you of murder. You did NOT kill anyone — your alibi is genuine. Deliver a 4-6 sentence noir monologue: indignant/wounded first, then defend yourself with your real alibi, then a cutting line at the detective for picking the wrong target. First person. Output ONLY the monologue, no preface.`;
+}
+
+function buildShowdownUserPrompt(caseObj, accused, presented, verdict) {
+  const lang = caseObj.lang;
+  const evList = presented.length
+    ? presented.map(e => `  - ${e.source}: "${e.text}"${e.namedSuspect ? `  (names ${e.namedSuspect})` : ""}`).join("\n")
+    : (lang === "zh" ? "  （侦探什么证据也没拿出来）" : "  (the detective presented no evidence at all)");
+  if (lang === "zh") {
+    const motive = verdict.outcome === "confession" && caseObj._motiveType
+      ? `\n你的真实动机类型: ${caseObj._motiveType}` : "";
+    return `案件背景:\n受害人: ${caseObj.victim.name} (${caseObj.victim.title})\n现场: ${caseObj.scene}\n凶器: ${caseObj.weaponAtScene}\n死亡时间: ${caseObj.timeOfDeath}\n\n你声称的不在场证明: "${accused.claimedAlibi}"\n\n侦探当面摔在你脸上的证据:\n${evList}${motive}`;
+  }
+  const motive = verdict.outcome === "confession" && caseObj._motiveType
+    ? `\nYour real motive type: ${caseObj._motiveType}` : "";
+  return `Case context:\nVictim: ${caseObj.victim.name} (${caseObj.victim.title})\nScene: ${caseObj.scene}\nWeapon: ${caseObj.weaponAtScene}\nTime of death: ${caseObj.timeOfDeath}\n\nYour claimed alibi: "${accused.claimedAlibi}"\n\nEvidence the detective just slapped down in front of you:\n${evList}${motive}`;
+}
+
+function fallbackShowdownLine(caseObj, accused, verdict) {
+  const lang = caseObj.lang;
+  if (verdict.outcome === "confession") {
+    return lang === "zh"
+      ? "（凶手垂下头，半晌，点了支烟。）……是我。"
+      : "(The killer's shoulders drop. After a long pause, they light a cigarette.) ...Yeah. It was me.";
+  }
+  if (verdict.outcome === "escape") {
+    return lang === "zh"
+      ? "（嫌犯冷笑一声，转身。）侦探，你的本事就这点？我走了。"
+      : "(They smile thinly and turn for the door.) That's all you've got, detective? I'm leaving.";
+  }
+  return lang === "zh"
+    ? "（被指控者愤然一拍桌子。）侬认错人了！——我那晚根本不在那儿。"
+    : "(They slam the table.) You picked the wrong person, detective. I wasn't anywhere near there.";
+}
+
+function gotoVerdictFromShowdown() {
+  if (!STATE.showdown || !STATE.showdown.verdict) return;
+  showVerdict(STATE.showdown.verdict);
 }
 
 function showVerdict(v) {
@@ -2028,11 +2236,25 @@ function showVerdict(v) {
 
   const stamp = $("#verdict-stamp");
   const result = $("#verdict-result");
-  if (v.correct) {
+  // Three verdict shapes after the Final Showdown rewrite:
+  //   confession — right person, named-them evidence → SOLVED (win)
+  //   escape     — right person, evidence too weak   → KILLER WALKS (loss but
+  //                you knew who it was, you just couldn't prove it)
+  //   dismissed  — wrong person                      → FAILED (loss + walked off)
+  // Pre-showdown callers can still pass v without v.outcome; fall back to the
+  // original solved/failed split on v.correct.
+  const outcome = v.outcome ||
+    (v.correct ? "confession" : "dismissed");
+  if (outcome === "confession") {
     stamp.textContent = t("verdict.solved");
     stamp.className = "verdict-stamp solved";
     result.textContent = t("verdict.win");
     result.className = "verdict-result win";
+  } else if (outcome === "escape") {
+    stamp.textContent = t("verdict.escaped");
+    stamp.className = "verdict-stamp escaped";
+    result.textContent = t("verdict.lossEscape");
+    result.className = "verdict-result loss";
   } else {
     stamp.textContent = t("verdict.failed");
     stamp.className = "verdict-stamp failed";
@@ -2469,6 +2691,7 @@ async function newCase(seed = null) {
   STATE.evidence = [];
   STATE.evidencePickerOpen = false;
   STATE.currentSuspect = null;
+  STATE.showdown = null;
   // Strip ?seed= from the URL on a fresh case so subsequent NEW CASE clicks
   // don't keep producing the same case. Sharing happens via the explicit button.
   if (window.location.search) {
@@ -2519,7 +2742,12 @@ function gotoLineup() {
 
 function gotoBriefing()    { show("screen-briefing"); }
 function gotoTitle()       { show("screen-title"); }
-function gotoAccusation()  { renderAccusationGrid(); show("screen-accusation"); }
+function gotoAccusation()  {
+  // Cancel any in-flight stream (e.g. user backed out of a showdown mid-monologue)
+  abortInterrogation();
+  renderAccusationGrid();
+  show("screen-accusation");
+}
 
 function loadSettings() {
   // Provider config + per-provider keys/models
@@ -2624,6 +2852,8 @@ function bind() {
         case "close-timeline-modal": closeTimelineModal(); break;
         case "resume-session":   resumeSession();   break;
         case "discard-session":  discardSession();  break;
+        case "present-case":     presentTheCase();  break;
+        case "goto-verdict":     gotoVerdictFromShowdown(); break;
         case "toggle-reveal":    toggleReveal();   break;
         case "dismiss-tutorial": dismissTutorial(); break;
         case "reset-stats":      resetStats();      break;

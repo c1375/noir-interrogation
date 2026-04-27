@@ -181,6 +181,43 @@
       </div>
     </section>
 
+    <!-- ========== FINAL SHOWDOWN SCREEN ========== -->
+    <section id="screen-showdown" class="screen">
+      <div class="showdown-frame">
+        <div class="showdown-stage">
+          <div class="showdown-accused">
+            <div class="showdown-avatar" id="showdown-avatar"></div>
+            <div class="showdown-id">
+              <div class="showdown-name" id="showdown-name">—</div>
+              <div class="showdown-occ" id="showdown-occ">—</div>
+            </div>
+          </div>
+          <p class="showdown-alibi-label" data-i18n="showdown.alibiLabel">Their claimed alibi:</p>
+          <blockquote class="showdown-alibi" id="showdown-alibi">"—"</blockquote>
+        </div>
+
+        <div class="showdown-prep" id="showdown-prep">
+          <h3 class="showdown-instructions" data-i18n="showdown.instructions">Pick the evidence you'll present. At least one piece that names them is what cracks a confession.</h3>
+          <div class="showdown-evidence" id="showdown-evidence">
+            <!-- populated by renderShowdown() -->
+          </div>
+          <div class="showdown-actions">
+            <button class="btn-danger btn-present" data-action="present-case" data-i18n="showdown.present">PRESENT THE CASE</button>
+            <button class="btn-secondary" data-action="goto-accusation" data-i18n="showdown.back">← Pick a different suspect</button>
+          </div>
+        </div>
+
+        <div class="showdown-monologue" id="showdown-monologue" hidden>
+          <div class="showdown-stamp" id="showdown-stamp">—</div>
+          <div class="showdown-bubble" id="showdown-bubble"></div>
+          <div class="showdown-actions">
+            <button class="btn-primary" data-action="goto-verdict" id="showdown-verdict-btn"
+                    hidden data-i18n="showdown.seeVerdict">SEE THE VERDICT</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ========== VERDICT SCREEN ========== -->
     <section id="screen-verdict" class="screen">
       <div class="verdict-frame">

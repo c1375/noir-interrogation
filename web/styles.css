@@ -1213,6 +1213,11 @@ html[data-lang="zh"] .reveal-monologue {
   color: var(--blood);
 }
 
+.verdict-stamp.escaped {
+  border-color: #6a4a1a;
+  color: #6a4a1a;
+}
+
 .verdict-frame .screen-title {
   color: var(--ink);
 }
@@ -2082,6 +2087,238 @@ kbd {
 .conversation::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
 .conversation::-webkit-scrollbar-thumb { background: var(--brass-dim); }
 .conversation::-webkit-scrollbar-thumb:hover { background: var(--brass); }
+
+/* ===== Final Showdown screen ===== */
+
+.showdown-frame {
+  max-width: 760px;
+  margin: 0 auto;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  box-shadow: var(--shadow);
+  padding: 36px 48px 32px;
+  position: relative;
+}
+
+.showdown-stage {
+  border-bottom: 1px dashed var(--ink-fade);
+  padding-bottom: 20px;
+  margin-bottom: 22px;
+  text-align: center;
+}
+
+.showdown-accused {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.showdown-avatar {
+  width: 80px;
+  height: 80px;
+  border: 2px solid var(--brass);
+  background: var(--paper-warm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.showdown-avatar svg {
+  width: 56px;
+  height: 56px;
+}
+
+.showdown-id {
+  text-align: left;
+}
+
+.showdown-name {
+  font-family: "Playfair Display", serif;
+  font-size: 1.8rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.showdown-occ {
+  font-size: 0.95rem;
+  color: var(--ink-fade);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.showdown-alibi-label {
+  margin: 16px 0 4px;
+  color: var(--ink-fade);
+  font-size: 0.85rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.showdown-alibi {
+  margin: 0;
+  padding: 10px 18px;
+  border-left: 3px solid var(--brass-dim);
+  font-family: "Special Elite", monospace;
+  font-style: italic;
+  color: var(--ink);
+}
+
+.showdown-instructions {
+  font-size: 0.95rem;
+  color: var(--ink-fade);
+  font-weight: normal;
+  margin: 0 0 14px;
+  letter-spacing: 0.02em;
+}
+
+.showdown-evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.showdown-no-evidence {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--paper-shadow);
+  background: rgba(0,0,0,0.04);
+  color: var(--ink-fade);
+  font-style: italic;
+}
+
+.showdown-evidence-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px dashed var(--ink-fade);
+  background: rgba(0,0,0,0.025);
+  cursor: pointer;
+  align-items: flex-start;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.showdown-evidence-item:hover {
+  border-color: var(--brass);
+}
+
+.showdown-evidence-item.selected {
+  border: 2px solid var(--brass);
+  background: rgba(0,0,0,0.05);
+  padding: 9px 13px; /* compensate for the +1px border */
+}
+
+.showdown-evidence-item input[type=checkbox] {
+  margin-top: 4px;
+  accent-color: var(--brass);
+  flex-shrink: 0;
+}
+
+.showdown-evidence-body {
+  flex: 1;
+}
+
+.showdown-evidence-source {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-fade);
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.showdown-evidence-text {
+  font-family: "Special Elite", monospace;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.showdown-evidence-pill {
+  display: inline-block;
+  background: var(--blood);
+  color: var(--paper);
+  padding: 2px 10px;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 2px;
+  font-weight: bold;
+}
+
+.showdown-actions {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.btn-present {
+  font-size: 1.1rem !important;
+  padding: 14px 32px !important;
+  letter-spacing: 0.18em !important;
+}
+
+/* ----- Showdown monologue (after PRESENT clicked) ----- */
+
+.showdown-monologue {
+  text-align: center;
+  animation: fadeIn 0.6s ease-out;
+}
+
+.showdown-stamp {
+  display: inline-block;
+  font-family: "Playfair Display", serif;
+  font-weight: 900;
+  letter-spacing: 0.3em;
+  font-size: 1.6rem;
+  border: 4px double;
+  padding: 10px 26px;
+  margin-bottom: 20px;
+  transform: rotate(-3deg);
+}
+
+.showdown-stamp.confession {
+  border-color: #2a6b2a;
+  color: #2a6b2a;
+}
+
+.showdown-stamp.escape {
+  border-color: #6a4a1a;
+  color: #6a4a1a;
+}
+
+.showdown-stamp.dismissed {
+  border-color: var(--blood);
+  color: var(--blood);
+}
+
+.showdown-bubble {
+  text-align: left;
+  font-family: "Special Elite", monospace;
+  font-size: 1.05rem;
+  line-height: 1.55;
+  padding: 22px 26px;
+  background: rgba(0,0,0,0.04);
+  border-left: 4px solid var(--brass);
+  white-space: pre-wrap;
+  min-height: 80px;
+  max-height: 50vh;
+  overflow-y: auto;
+  margin-bottom: 18px;
+}
+
+.showdown-bubble.streaming::after {
+  content: "▍";
+  display: inline-block;
+  margin-left: 2px;
+  color: var(--brass);
+  animation: streamCaret 0.9s steps(2, end) infinite;
+  vertical-align: baseline;
+}
 
 /* Respect prefers-reduced-motion: collapse animations / transitions to a
    near-instant blink. Keeps the visual end-state but kills fades, slides,

@@ -1142,6 +1142,35 @@ async function verifyAccusation(caseObj, accusedName) {
   };
 }
 
+// Final-Showdown outcome resolution. Pure script logic; the LLM only performs
+// the role this returns. Three outcomes:
+//   confession — accused IS the killer AND the player presented at least one
+//                 piece of evidence that names the killer (regardless of whether
+//                 it was a true or misleading-2nd-witness statement, as long as
+//                 it accuses the actual killer).
+//   escape     — accused IS the killer BUT no presented evidence named them.
+//                 They walk free; case is failed but not via misidentification.
+//   dismissed  — accused is NOT the killer. Their alibi defends them; the real
+//                 killer walks free.
+async function resolveShowdown(caseObj, accusedName, presentedEvidence) {
+  const verdict = await verifyAccusation(caseObj, accusedName);
+  let outcome;
+  if (!verdict.correct) {
+    outcome = "dismissed";
+  } else {
+    const namedKiller = (presentedEvidence || []).some(
+      e => e && e.namedSuspect === caseObj._killer
+    );
+    outcome = namedKiller ? "confession" : "escape";
+  }
+  // confession is the only "win" outcome; escape and dismissed are both losses.
+  return {
+    ...verdict,
+    outcome,
+    won: outcome === "confession",
+  };
+}
+
 /* ============== Templated responses ============== */
 
 function voiceFor(lang, occupation) {

@@ -27,7 +27,7 @@ Three surfaces:
 2. Script commits to the answer with a **SHA-256 hash** before play. The hash is shown to the player up front; it's re-verified at accusation, so the agent provably can't change the answer mid-game.
 3. Player questions one suspect at a time. For each suspect, the script returns a **typed roleplay card**: claimed alibi, deflection topics, plus zero-or-more typed `knows_facts` (witness sightings, motive gossip).
 4. The agent roleplays the suspect *strictly from the card*. Single-card view = no global state = no leak.
-5. Player accuses someone. Script reveals the truth, verifies the original SHA-256 still matches, closes the case.
+5. Player accuses someone. Script reveals the truth, verifies the original SHA-256 still matches, closes the case. *(Web port also runs a Final Showdown beat first — see web feature set.)*
 
 ### Two parallel content worlds
 
@@ -156,6 +156,7 @@ Repo Settings → Pages → source `main` branch, `/web` folder. Site goes live 
 | **Case File modal** | A button on the interrogation header opens an overlay showing victim/scene/weapon/TOD/suspects/hash without leaving the conversation. |
 | **Notes panel** | Slide-in from the right; auto-collects every Q&A grouped by suspect and category. Incremental DOM updates (only the active tab re-renders on a new note). |
 | **Confront mechanic** | After hearing 2+ Qs from a witness suspect, their statement gets added to your evidence; click CONFRONT and present any collected statement to any suspect. The killer cracks (in voice) when confronted with a statement that names them; the falsely-accused defends with their alibi; unrelated suspects shrug. |
+| **Final Showdown** | Accusing no longer dumps you straight to the verdict screen. After picking the accused, you get a dedicated **Showdown** screen: their avatar + claimed alibi up top, every collected statement as checkable evidence cards below. Click PRESENT THE CASE and the accused's reaction streams in live, performing one of three scripted outcomes: **CONFESSION** (right person + you presented at least one statement that names them), **WALKED FREE** (right person but evidence too thin — they mock you and leave), or **DISMISSED** (wrong person — they defend their alibi indignantly). Outcome is decided by `engine.resolveShowdown()`, not the LLM, so the SHA-256 commitment is still authoritative. |
 | **Suspect memory** | Repeating the same question makes the suspect notice ("I already told you, detective…") and escalate on third ask. |
 | **Hash commitment + verdict** | The game-start hash is re-computed at accusation and shown to the player as proof of no-cheating. |
 | **Share via URL seed** | Each case has a deterministic seed; "Share this case" button copies a `?seed=…&lang=…` URL. Anyone opening it gets the exact same case (great for competing with friends). |
