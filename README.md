@@ -3,7 +3,7 @@
 **Author:** Yizhou Zhang
 **Course:** Generative AI · Week 5 (Build a Reusable AI Skill)
 **Repository:** https://github.com/c1375/noir-interrogation
-**Video walkthrough:** *<paste video link here before submitting>*
+**Video walkthrough:** https://youtu.be/pE3v1lVcprk
 **Playable web demo:** local only — double-click `play.bat` (Windows) or `play.sh` (macOS / Linux), or run `python play.py`. See the [Web demo](#web-demo) section below.
 
 ---
@@ -216,7 +216,7 @@ The skill is exercised on three prompts in the demo video:
 
 ## Walkthrough video
 
-*<paste 45–90 second video link here before submitting>*
+▶ **Watch:** https://youtu.be/pE3v1lVcprk
 
 The video shows:
 1. Skill folder structure (`.claude/skills/noir-interrogation/`)
