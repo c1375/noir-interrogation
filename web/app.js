@@ -368,6 +368,8 @@ const STRINGS = {
     "title.h1":            "Noir<br>Interrogation",
     "title.tagline":       "A one-shot detective game.<br>Five suspects. One killer. The script holds the answer.",
     "title.credit":        "Built as a Claude Code skill, ported to the browser.",
+    "title.keyMissing":    "⚠ No LLM API key — open Settings to add one before playing.",
+    "error.needKey":       "An LLM API key is required to play. Opening Settings…",
     "title.difficulty":    "DIFFICULTY",
     "btn.newCase":         "NEW CASE",
     "btn.dailyCase":       "DAILY CASE",
@@ -546,6 +548,8 @@ const STRINGS = {
     "title.h1":            "夜雾<br>审讯",
     "title.tagline":       "一局制侦探游戏。<br>五个嫌疑人，一个真凶。答案藏在脚本里。",
     "title.credit":        "原是 Claude Code 上的一个 skill，移植到了浏览器。",
+    "title.keyMissing":    "⚠ 尚未配置 LLM API 密钥 — 请先在「设置」里添加再开始游戏。",
+    "error.needKey":       "本游戏需要 LLM API 密钥才能开始。即将打开「设置」……",
     "title.difficulty":    "难度",
     "btn.newCase":         "新案件",
     "btn.dailyCase":       "每日案件",
@@ -990,28 +994,19 @@ function renderQuestionMenu() {
   });
 }
 
-function setMode(mode) {
-  STATE.mode = mode;
-  $$(".mode-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
-  // Preset question buttons are ALWAYS visible -- in AI mode they route the
-  // canned question text through the LLM instead of the templated response.
-  // Only the free-text input is mode-gated.
+function setMode(_mode) {
+  // The game always runs in AI mode now (key is required to start).
+  STATE.mode = "ai";
   $("#ask-offline").hidden = false;
-  $("#ask-ai").hidden       = (mode !== "ai");
-  if (mode === "ai") {
-    const hint = $("#ai-hint");
-    const key = activeKey();
-    if (!key) {
-      hint.textContent = t("interrog.aiNoKey");
-      hint.style.color = "var(--blood)";
-      $("#ai-input").disabled = true;
-    } else {
-      const provLabel = PROVIDERS[STATE.provider].label;
-      hint.textContent = t("interrog.aiActive", `${provLabel} · ${activeModel()}`);
-      hint.style.color = "var(--paper-warm)";
-      $("#ai-input").disabled = false;
-    }
-  }
+  $("#ask-ai").hidden = false;
+  const hint = $("#ai-hint");
+  const provLabel = PROVIDERS[STATE.provider].label;
+  hint.textContent = t("interrog.aiActive", `${provLabel} · ${activeModel()}`);
+  hint.style.color = "var(--paper-warm)";
+  $("#ai-input").disabled = false;
+  // Mirror the active provider in the ask-area header
+  const provBadge = $("#active-provider");
+  if (provBadge) provBadge.textContent = `${provLabel} · ${activeModel()}`;
 }
 
 function scrollConvoToBottom() {
@@ -1164,49 +1159,37 @@ function askPreset(questionId) {
   addBubble("detective", qLabel, suspect.name);
   pushTurn("detective", qLabel);
 
-  // In AI mode (with a key), route the preset question through the LLM so
-  // the player gets richer in-character improvisation; otherwise fall back
-  // to the templated offline response.
-  if (STATE.mode === "ai" && activeKey()) {
-    const thinking = addBubble("thinking", "", suspect.name);
-    callLLM(suspect, qLabel).then(reply => {
-      thinking.remove();
-      addBubble("suspect", reply, suspect.name);
-      pushTurn("suspect", reply);
-      addNote(suspect.name, questionId, qLabel, reply);
-      STATE.case.questionCounts[suspect.name] =
-        (STATE.case.questionCounts[suspect.name] || 0) + 1;
-      maybeCollectEvidence(suspect);
-    }).catch(err => {
-      thinking.remove();
-      addBubble("system",
-        `${t("interrog.errorPrefix")}${err.message}${t("interrog.errorSuffix")}`,
-        suspect.name);
-    });
-    if (questionId === "leave") {
-      setTimeout(() => show("screen-lineup"), 1500);
-    }
-    return;
-  }
-
-  // OFFLINE mode (or AI without a key) — use the templated response.
-  const response = generateOfflineResponse(STATE.case, suspect, questionId);
-
   const thinking = addBubble("thinking", "", suspect.name);
-  setTimeout(() => {
+
+  callLLM(suspect, qLabel).then(reply => {
     thinking.remove();
+    addBubble("suspect", reply, suspect.name);
+    pushTurn("suspect", reply);
+    addNote(suspect.name, questionId, qLabel, reply);
+    STATE.case.questionCounts[suspect.name] =
+      (STATE.case.questionCounts[suspect.name] || 0) + 1;
+    maybeCollectEvidence(suspect);
+  }).catch(err => {
+    // LLM call failed -- fall back to a templated response so the game
+    // doesn't get stuck. Tell the player something went wrong.
+    console.warn("[noir] LLM call failed, using template fallback:", err.message);
+    thinking.remove();
+    addBubble("system",
+      `${t("interrog.errorPrefix")}${err.message}${t("interrog.errorSuffix")}`,
+      suspect.name);
+    const response = generateOfflineResponse(STATE.case, suspect, questionId);
     addBubble("suspect", response, suspect.name);
     pushTurn("suspect", response);
     addNote(suspect.name, questionId, qLabel, response);
     maybeCollectEvidence(suspect);
-  }, 450 + Math.random() * 350);
+  });
 
   if (questionId === "leave") {
-    setTimeout(() => show("screen-lineup"), 1200);
+    setTimeout(() => show("screen-lineup"), 1500);
   }
 }
 
-// Backwards-compat alias: the function used to be named askOffline.
+// Backwards-compat alias
 const askOffline = askPreset;
 
 /* ============================== AI mode ============================== */
@@ -1947,6 +1930,7 @@ function saveApiKey() {
   localStorage.setItem(lsModel, model);
   updateApiStatus(true);
   setMode(STATE.mode);  // refresh AI hint
+  refreshKeyBanner();
 }
 
 function clearApiKey() {
@@ -1958,6 +1942,7 @@ function clearApiKey() {
   if (keyEl) keyEl.value = "";
   updateApiStatus();
   setMode(STATE.mode);
+  refreshKeyBanner();
 }
 
 function updateApiStatus(justSaved = false) {
@@ -1993,6 +1978,7 @@ function dailySeedString() {
 }
 
 async function dailyCase() {
+  if (!requireKey()) return;
   // Daily case is deterministic: same date + same lang + same difficulty
   // = same case for everyone. Force NORMAL difficulty so the daily target
   // is comparable across players.
@@ -2002,7 +1988,15 @@ async function dailyCase() {
   STATE.difficulty = prevDifficulty;
 }
 
+function requireKey() {
+  if (activeKey()) return true;
+  alert(t("error.needKey"));
+  openSettings();
+  return false;
+}
+
 async function newCase(seed = null) {
+  if (!requireKey()) return;
   // First-time players: show a one-line tip about the deduction loop.
   if (!localStorage.getItem(LS.tutorialSeen)) {
     showTutorial();
@@ -2257,11 +2251,25 @@ function bind() {
   });
 }
 
+function refreshKeyBanner() {
+  const banner = $("#key-banner");
+  if (!banner) return;
+  if (activeKey()) {
+    const provLabel = PROVIDERS[STATE.provider].label;
+    banner.innerHTML = `<span class="banner-ok">✓ ${escapeHtml(provLabel)} · ${escapeHtml(activeModel())}</span>`;
+    banner.hidden = false;
+  } else {
+    banner.innerHTML = `<span class="banner-warn">${escapeHtml(t("title.keyMissing"))}</span>`;
+    banner.hidden = false;
+  }
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
   loadSettings();
   bind();
   applyI18n();
   refreshAudioToggle();
+  refreshKeyBanner();
   // Sync difficulty button active state on first paint.
   $$(".difficulty-toggle button").forEach(b => {
     b.classList.toggle("active", b.dataset.difficulty === STATE.difficulty);

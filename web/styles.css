@@ -257,6 +257,24 @@ html[data-lang="zh"] .game-title {
   font-style: italic;
 }
 
+.key-banner {
+  margin-top: 16px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  border: 1px dashed var(--paper-shadow);
+  background: var(--paper-warm);
+}
+.key-banner .banner-ok   { color: #2a6b2a; font-weight: bold; }
+.key-banner .banner-warn { color: var(--blood); font-weight: bold; }
+
+.active-provider {
+  color: var(--brass);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-style: italic;
+}
+
 /* ============== Buttons ============== */
 
 button {

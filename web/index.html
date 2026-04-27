@@ -48,6 +48,7 @@
           <button class="btn-secondary" data-action="daily-case" data-i18n="btn.dailyCase">DAILY CASE</button>
           <button class="btn-secondary" data-action="open-settings" data-i18n="btn.settings">SETTINGS</button>
         </div>
+        <div class="key-banner" id="key-banner" hidden></div>
         <p class="title-credit" data-i18n="title.credit">Built as a Claude Code skill, ported to the browser.</p>
       </div>
     </section>
@@ -138,11 +139,7 @@
         </div>
         <div class="ask-area" id="ask-area">
           <div class="ask-area-header">
-            <div class="mode-toggle">
-              <span class="mode-label" data-i18n="interrog.modeLabel">Mode:</span>
-              <button class="mode-btn active" data-mode="offline" data-i18n="mode.offline">PRESETS</button>
-              <button class="mode-btn" data-mode="ai" data-i18n="mode.ai">PRESETS + AI</button>
-            </div>
+            <span class="active-provider" id="active-provider"></span>
             <button id="confront-btn" class="btn-confront"
                     data-action="open-evidence-picker"
                     data-i18n="btn.confront"
