@@ -1965,6 +1965,12 @@ function _buildRevealUserPayload(caseObj) {
     lines.push(`真凶: ${killer.name} (${killer.occupation})`);
     lines.push(`凶手对警官谎称的不在场证明: "${killer.claimedAlibi}"`);
     lines.push(`凶手的动机类型: ${caseObj._motiveType || "(无)"}`);
+    if (caseObj._motiveSpecific) {
+      lines.push(`动机的具体内情: ${caseObj._motiveSpecific.summary}`);
+    }
+    if (caseObj._methodDetail) {
+      lines.push(`作案手法: ${caseObj._methodDetail.summary}`);
+    }
     if (witness) {
       lines.push(`关键目击者: ${witness.name} (${witness.occupation})`);
       lines.push(`目击词: ${witness.knowsFacts.find(f => f.type === "witness").text}`);
@@ -1990,6 +1996,12 @@ function _buildRevealUserPayload(caseObj) {
     lines.push(`KILLER: ${killer.name} (${killer.occupation})`);
     lines.push(`Killer's lie to the detective (false alibi): "${killer.claimedAlibi}"`);
     lines.push(`Killer's motive type: ${caseObj._motiveType || "(none)"}`);
+    if (caseObj._motiveSpecific) {
+      lines.push(`Motive specifics: ${caseObj._motiveSpecific.summary}`);
+    }
+    if (caseObj._methodDetail) {
+      lines.push(`Method: ${caseObj._methodDetail.summary}`);
+    }
     if (witness) {
       lines.push(`Key witness: ${witness.name} (${witness.occupation})`);
       lines.push(`Witness statement: ${witness.knowsFacts.find(f => f.type === "witness").text}`);
@@ -2016,8 +2028,8 @@ async function generateRevealMonologue(caseObj, opts = {}) {
   if (caseObj.narrativeReveal) return caseObj.narrativeReveal;
   const lang = caseObj.lang;
   const system = (lang === "zh")
-    ? "你扮演一桩 1930 年代民国上海 noir 凶案中的侦探, 案子刚破, 现在念结案独白。200-280 字, 用上海腔/民国调调。串起这些信息: 凶手 + 动机, 目击者那晚看到什么, 凶器为什么在现场, 每个无辜嫌疑人的红鲱鱼私事各是什么 (这些私事都跟凶案无关, 只是让他们看上去可疑)。用第一人称 (「我知道是 X 的时候……」)。不出戏, 不提脚本/游戏。直接输出独白, 不要引号或前后缀。"
-    : "You are the detective in a 1940s noir film delivering a closing monologue, having just solved the case. Write 200-280 words in noir voice. Tie together: who the killer is + their motive, what the witness saw, why the weapon was at the scene, and (briefly) what each non-killer's red herring secret was actually about — make clear those secrets were unrelated to the murder, only making them LOOK suspicious. Speak in first person ('I knew it was X when...'). Do not break character. Do not mention the script or game. Output ONLY the monologue, no quotation marks, no preface.";
+    ? "你扮演一桩 1930 年代民国上海 noir 凶案中的侦探, 案子刚破, 现在念结案独白。200-300 字, 用上海腔/民国调调。串起这些信息: 凶手 + 动机（**务必点出动机里的具体内情，金额/把柄/关系名都要落地**）, 当晚作案的大致经过（依照 user message 里的「作案手法」字段：是否预谋、是否搏斗、凶器是带去的还是现场拿的）, 目击者那晚看到什么, 每个无辜嫌疑人的红鲱鱼私事各是什么 (这些私事都跟凶案无关, 只是让他们看上去可疑)。用第一人称 (「我知道是 X 的时候……」)。不出戏, 不提脚本/游戏。直接输出独白, 不要引号或前后缀。"
+    : "You are the detective in a 1940s noir film delivering a closing monologue, having just solved the case. Write 200-300 words in noir voice. Tie together: who the killer is + their motive (**use the specifics — actual amount, actual leverage, actual person — given in the user message**), how it went down that night (use the METHOD field: premeditated vs heat-of-moment, struggle vs surprise, weapon brought vs grabbed at scene), what the witness saw, and (briefly) what each non-killer's red herring secret was actually about — make clear those secrets were unrelated to the murder, only making them LOOK suspicious. Speak in first person ('I knew it was X when...'). Do not break character. Do not mention the script or game. Output ONLY the monologue, no quotation marks, no preface.";
   const user = _buildRevealUserPayload(caseObj);
   const reply = await callLLMRaw(system, user, 2000, opts);
   caseObj.narrativeReveal = reply;
@@ -2165,7 +2177,7 @@ function buildShowdownSystemPrompt(caseObj, accused, verdict) {
 
   if (lang === "zh") {
     if (role === "killer-confession") {
-      return `你扮演一桩 1930 年代民国上海 noir 凶案中的真凶 —— ${accused.name}（${accused.occupation}），刚被侦探当面指控并出示了点你名的证据。用上海腔/民国调调写一段 5-8 句的最终独白：先一两句还在虚张声势，然后心理崩溃、自白凶杀的动机和大致经过。第一人称。不许出戏、不许提脚本/游戏。直接输出独白本身，不要引号或前后缀。`;
+      return `你扮演一桩 1930 年代民国上海 noir 凶案中的真凶 —— ${accused.name}（${accused.occupation}），刚被侦探当面指控并出示了点你名的证据。用上海腔/民国调调写一段 6-9 句的最终独白：先一两句还在虚张声势，然后心理崩溃，**具体地**自白动机（金额、把柄、关系名都要点出来）+ 当晚凶案的大致经过（依照下面 user message 里给你的「方法」字段，预谋还是临时起意，是否搏斗，凶器是带去的还是现场拿的）。不要笼统说「我有我的理由」，要说出"为什么是这一笔钱"、"为什么是这件事"、"为什么是今晚"。第一人称。不许出戏、不许提脚本/游戏。直接输出独白本身，不要引号或前后缀。`;
     }
     if (role === "killer-escape") {
       return `你扮演一桩 1930 年代民国上海 noir 凶案中的真凶 —— ${accused.name}（${accused.occupation}），刚被侦探指控但他拿不出能直接点你名的证据。用上海腔/民国调调写一段 4-6 句独白：冷笑、嘲讽对方的「证据」薄弱、强调你的不在场说辞，最后甩一句让侦探脊背发凉的话扬长而去（你这次逃了，但话里要让人感觉到你**确实是**凶手）。第一人称。不许直接承认。直接输出独白，不要前后缀。`;
@@ -2174,7 +2186,7 @@ function buildShowdownSystemPrompt(caseObj, accused, verdict) {
     return `你扮演 ${accused.name}（${accused.occupation}），刚被侦探当面错认为凶手。你**确实没杀人**，你的不在场证明是真的。用上海腔/民国调调写一段 4-6 句独白：先愤怒/受伤，再用你的不在场证明反驳，最后讽刺侦探看错了人。第一人称。不许承认任何凶杀。直接输出独白，不要前后缀。`;
   }
   if (role === "killer-confession") {
-    return `You are ${accused.name} (${accused.occupation}), the killer in a 1940s American noir murder. The detective has just accused you in person and presented evidence that names you. Deliver a 5-8 sentence final monologue in noir voice: first a beat or two of bluster, then the dam breaks — confess the kill, your motive, and the rough how. First person. Do not break character or mention any "script" / "game". Output ONLY the monologue, no quotation marks, no preface.`;
+    return `You are ${accused.name} (${accused.occupation}), the killer in a 1940s American noir murder. The detective has just accused you in person and presented evidence that names you. Deliver a 6-9 sentence final monologue in noir voice: first a beat or two of bluster, then the dam breaks — confess the kill with **specifics** (the actual amount, the actual leverage, the actual person — all given to you in the user message below) AND walk briefly through how it went down (use the METHOD field in the user message: was it premeditated or heat-of-moment, was there a struggle, did you bring the weapon or grab it). Don't say "I had my reasons" — say WHY this person, this amount, this night. First person. Do not break character or mention any "script" / "game". Output ONLY the monologue, no quotation marks, no preface.`;
   }
   if (role === "killer-escape") {
     return `You are ${accused.name} (${accused.occupation}), the actual killer in a 1940s American noir mystery. The detective accused you, but they couldn't bring evidence that names you. Deliver a 4-6 sentence noir monologue: cold smile, mock the thinness of their case, lean on your alibi, and walk out free with one parting line that makes the detective realize (privately) they were right all along — but you got away. First person. Do NOT confess outright. Output ONLY the monologue, no preface.`;
@@ -2187,14 +2199,33 @@ function buildShowdownUserPrompt(caseObj, accused, presented, verdict) {
   const evList = presented.length
     ? presented.map(e => `  - ${e.source}: "${e.text}"${e.namedSuspect ? `  (names ${e.namedSuspect})` : ""}`).join("\n")
     : (lang === "zh" ? "  （侦探什么证据也没拿出来）" : "  (the detective presented no evidence at all)");
-  if (lang === "zh") {
-    const motive = verdict.outcome === "confession" && caseObj._motiveType
-      ? `\n你的真实动机类型: ${caseObj._motiveType}` : "";
-    return `案件背景:\n受害人: ${caseObj.victim.name} (${caseObj.victim.title})\n现场: ${caseObj.scene}\n凶器: ${caseObj.weaponAtScene}\n死亡时间: ${caseObj.timeOfDeath}\n\n你声称的不在场证明: "${accused.claimedAlibi}"\n\n侦探当面摔在你脸上的证据:\n${evList}${motive}`;
+
+  // Confession-only: feed the killer the per-case motive + method specifics
+  // so the monologue is grounded in the actual story instead of generic bluster.
+  let motiveBlock = "";
+  let methodBlock = "";
+  if (verdict.outcome === "confession") {
+    if (caseObj._motiveSpecific) {
+      motiveBlock = lang === "zh"
+        ? `\n动机类型: ${caseObj._motiveType}\n动机的具体内情（务必在认罪里点出来）: ${caseObj._motiveSpecific.summary}\n你大概会怎么开口（参考用，不要逐字念）: ${caseObj._motiveSpecific.confession}`
+        : `\nMotive type: ${caseObj._motiveType}\nMotive specifics (you MUST surface these in the confession): ${caseObj._motiveSpecific.summary}\nHow you might phrase it (reference only, do not quote verbatim): ${caseObj._motiveSpecific.confession}`;
+    } else if (caseObj._motiveType) {
+      motiveBlock = lang === "zh"
+        ? `\n你的真实动机类型: ${caseObj._motiveType}`
+        : `\nYour real motive type: ${caseObj._motiveType}`;
+    }
+    if (caseObj._methodDetail) {
+      const m = caseObj._methodDetail;
+      methodBlock = lang === "zh"
+        ? `\n作案手法（依照这个写经过）:\n  - 是否预谋: ${m.premeditated ? "是" : "否，临时起意"}\n  - 是否搏斗: ${m.struggle ? "有搏斗" : "无搏斗"}\n  - 凶器来源: ${m.weaponBrought ? "凶手随身带去" : "现场原本就有"}\n  - 概述: ${m.summary}`
+        : `\nMethod (use this for how-it-went-down details):\n  - Premeditated: ${m.premeditated ? "yes" : "no, heat of the moment"}\n  - Struggle: ${m.struggle ? "yes, there was a struggle" : "no struggle"}\n  - Weapon: ${m.weaponBrought ? "you brought it" : "already at the scene"}\n  - Summary: ${m.summary}`;
+    }
   }
-  const motive = verdict.outcome === "confession" && caseObj._motiveType
-    ? `\nYour real motive type: ${caseObj._motiveType}` : "";
-  return `Case context:\nVictim: ${caseObj.victim.name} (${caseObj.victim.title})\nScene: ${caseObj.scene}\nWeapon: ${caseObj.weaponAtScene}\nTime of death: ${caseObj.timeOfDeath}\n\nYour claimed alibi: "${accused.claimedAlibi}"\n\nEvidence the detective just slapped down in front of you:\n${evList}${motive}`;
+
+  if (lang === "zh") {
+    return `案件背景:\n受害人: ${caseObj.victim.name} (${caseObj.victim.title})\n现场: ${caseObj.scene}\n凶器: ${caseObj.weaponAtScene}\n死亡时间: ${caseObj.timeOfDeath}\n\n你声称的不在场证明: "${accused.claimedAlibi}"\n\n侦探当面摔在你脸上的证据:\n${evList}${motiveBlock}${methodBlock}`;
+  }
+  return `Case context:\nVictim: ${caseObj.victim.name} (${caseObj.victim.title})\nScene: ${caseObj.scene}\nWeapon: ${caseObj.weaponAtScene}\nTime of death: ${caseObj.timeOfDeath}\n\nYour claimed alibi: "${accused.claimedAlibi}"\n\nEvidence the detective just slapped down in front of you:\n${evList}${motiveBlock}${methodBlock}`;
 }
 
 function fallbackShowdownLine(caseObj, accused, verdict) {

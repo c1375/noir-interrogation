@@ -792,36 +792,94 @@ const MOTIVES_EN = {
     label: "blackmail",
     leak: (v) => `${v.name} had been quietly blackmailed for months. He never said by whom -- it was eating at him, though. You could see it.`,
     killerHide: () => "the nature of any private arrangement I had with the deceased",
+    narrative: (v, killer, rng) => {
+      const amount   = pick(["five hundred a month", "two thousand every quarter", "ten thousand by Christmas", "every cent of my last paycheck"], rng);
+      const leverage = pick(["a letter that should have been burned", "the night at the Park-Vendome in '38", "photographs from Havana", "what really happened to Mrs. Lockhart", "the receipt I'd thought I'd destroyed"], rng);
+      return {
+        summary: `Killer was being blackmailed by ${v.name} for ${amount}. Leverage: ${leverage}.`,
+        confession: `${amount}, every month, longer than I want to remember. He held ${leverage} over my head and kept tightening the screw. There was no version of this where he stopped.`,
+      };
+    },
   },
   jealousy: {
     label: "jealousy",
     leak: (v) => `Bad blood between ${v.name} and someone close to the household. Heard a row a week ago, ugly stuff. Personal.`,
     killerHide: () => "my personal feelings about anyone in the victim's household",
+    narrative: (v, killer, rng) => {
+      const target = pick(["his wife", "the dancer at the Tango Club", "his mistress with the diamond necklace", "the secretary he'd promised to marry"], rng);
+      const spark  = pick(["a letter she shouldn't have written", "a weekend in Saratoga he didn't know about", "the way she laughed when he turned his back", "a photograph in a desk drawer"], rng);
+      return {
+        summary: `Killer was in love with ${target}. ${v.name} had been keeping them apart. Tipping point: ${spark}.`,
+        confession: `It was always ${target}. He had no right — no right — and he knew. ${spark}. After that I couldn't keep pretending.`,
+      };
+    },
   },
   inheritance: {
     label: "inheritance",
     leak: (v) => `${v.name} changed his will recently. Lawyers in and out for two solid weeks. Somebody stood to gain.`,
     killerHide: () => "any financial connection I had to the deceased's estate",
+    narrative: (v, killer, rng) => {
+      const sum    = pick(["eighty thousand", "a quarter million", "the entire Fairlane estate", "the railway shares his father left him"], rng);
+      const change = pick(["the will was rewritten three weeks ago", "the codicil naming me beneficiary was signed last month", "the trust documents were finalized in October"], rng);
+      const threat = pick(["he was about to change it back", "he'd just hired a new lawyer to undo it all", "he'd threatened to cut me out by the New Year"], rng);
+      return {
+        summary: `${sum} at stake. ${change}. ${threat}.`,
+        confession: `${sum}. Do you know what that does to a man? ${change}, and then ${threat}. I had one window. I took it.`,
+      };
+    },
   },
   debt: {
     label: "debt",
     leak: (v) => `${v.name} was calling in old debts hard the last few months. People who owed him were spooked.`,
     killerHide: () => "any money I might have owed the deceased",
+    narrative: (v, killer, rng) => {
+      const amount = pick(["fifteen thousand", "thirty-two grand", "every chip I had at the Cosmopolitan", "more than I could ever earn back"], rng);
+      const reason = pick(["bad cards at the Cosmopolitan", "a horse in the fifth at Belmont that didn't run", "a stock tip from his own broker that turned poison", "the deal in '46 that went sideways"], rng);
+      const press  = pick(["he gave me until Friday or he'd send the boys", "he was going to my employer Monday", "he wanted my wife to know everything"], rng);
+      return {
+        summary: `Killer owed ${v.name} ${amount} from ${reason}. ${press}.`,
+        confession: `${amount}. From ${reason}, the kind of debt you can't dig out of. ${press}. I never planned it. But when the moment came, I couldn't see another door.`,
+      };
+    },
   },
   coverup: {
     label: "cover-up",
     leak: (v) => `${v.name} had been digging into something dark. Someone's past, I think. He wouldn't say whose.`,
     killerHide: () => "what the victim may have been investigating about me",
+    narrative: (v, killer, rng) => {
+      const buried = pick(["a body in a New Jersey culvert from '39", "a ledger that shouldn't exist", "the truth about who really lit the Carmichael warehouse", "the boy I left in Memphis", "a name I haven't worn in fifteen years"], rng);
+      const close  = pick(["he was a week from publishing", "he'd already met with a federal agent", "he had two more interviews scheduled", "the file was on his desk"], rng);
+      return {
+        summary: `Killer's old secret was ${buried}. ${v.name} had pieced it together and ${close}.`,
+        confession: `Some things you bury. Some things stay buried only as long as nobody's looking. ${v.name} found ${buried}. ${close}. I had to choose between my whole life and his.`,
+      };
+    },
   },
   revenge: {
     label: "old grudge",
     leak: (v) => `${v.name} ruined someone, years back. The kind of wound people don't forget.`,
     killerHide: () => "any old grudge I might have had with the deceased",
+    narrative: (v, killer, rng) => {
+      const wound = pick(["destroyed my brother's career in '39 over nothing", "drove my father into the river when I was twelve", "framed my partner and watched him hang", "took the only thing I had after the war"], rng);
+      const wait  = pick(["I waited eight years", "I waited until the right moment found itself", "I told myself I'd let it go — every year, I told myself that"], rng);
+      return {
+        summary: `Killer was avenging an old wrong: ${v.name} ${wound}. ${wait}.`,
+        confession: `He ${wound}. ${wait}. Tonight wasn't an accident, detective. Tonight was an appointment I made years ago.`,
+      };
+    },
   },
   exposure: {
     label: "public exposure",
     leak: (v) => `${v.name} was about to print something. A society piece. Career-ender, by the sound of it.`,
     killerHide: () => "anything the victim might have known about my private life",
+    narrative: (v, killer, rng) => {
+      const what  = pick(["my arrangement with the senator's wife", "the abortion in '42 nobody was supposed to know about", "where my real money comes from", "the affair that would end my marriage"], rng);
+      const where = pick(["the Sunday society page", "a column in the Examiner", "a small magazine but the right people read it", "a radio segment going out Tuesday morning"], rng);
+      return {
+        summary: `${v.name} was about to expose ${what} via ${where}.`,
+        confession: `${what}. He was going to put it in ${where}. After that there was no career, no marriage, no version of me worth being. I made a choice.`,
+      };
+    },
   },
 };
 
@@ -830,40 +888,181 @@ const MOTIVES_ZH = {
     label: "敲诈",
     leak: (v) => `${v.name} 这阵子一直被人暗里敲诈，他没说是谁，可脸色一天比一天差，看得出是憋着事。`,
     killerHide: () => "我和死者之间某种私下的安排",
+    narrative: (v, killer, rng) => {
+      const amount   = pick(["每个月五百大洋", "每季度两千银元", "圣诞前要凑够一万", "整整半年的薪水"], rng);
+      const leverage = pick(["一封早该烧掉的信", "民国二十七年百乐门那一夜", "从香港带回来的几张照片", "卢家那桩事的真相", "我以为撕掉的那张收据"], rng);
+      return {
+        summary: `凶手被 ${v.name} 长期敲诈：${amount}。把柄是${leverage}。`,
+        confession: `${amount}，每个月不间断，已经记不清扛了多久了。他攥着${leverage}不肯松手，越攥越紧。我已经看不到能让他停下来的那一天了。`,
+      };
+    },
   },
   jealousy: {
     label: "情感纠葛",
     leak: (v) => `${v.name} 和他家里某个人之间有点不清不楚，上礼拜还吵过一架，难听话都出来了。`,
     killerHide: () => "我对死者家中某人的私人感情",
+    narrative: (v, killer, rng) => {
+      const target = pick(["他的太太", "百乐门那个跳舞的姑娘", "他那个戴翠玉的姨太太", "他答应过要明媒正娶的秘书"], rng);
+      const spark  = pick(["一封不该写的信", "去苏州那个礼拜他根本不知道", "他一转身她就笑出来的那种笑", "抽屉里那张照片"], rng);
+      return {
+        summary: `凶手心里念着 ${target}，${v.name} 一直拦着不让。引爆点：${spark}。`,
+        confession: `从头到尾都是 ${target}。他没那个资格——他自己心里清楚。${spark}。从那天起，我就没法再装作什么都没发生。`,
+      };
+    },
   },
   inheritance: {
     label: "遗产之争",
     leak: (v) => `${v.name} 最近改过遗嘱，律师两个礼拜进进出出，明摆着有人能从他那儿分到一大笔。`,
     killerHide: () => "我和死者那笔遗产之间有什么牵连",
+    narrative: (v, killer, rng) => {
+      const sum    = pick(["八万银元", "二十五万", "整座新天地那一片产业", "他爹留给他的铁路股份"], rng);
+      const change = pick(["三个礼拜前重新立了字据", "上个月把我加进了受益人名单", "十月份信托文件刚办妥"], rng);
+      const threat = pick(["他正打算把我从受益人里拿掉", "他刚请了个新律师要把这事翻过来", "他撂话说年关就把我除名"], rng);
+      return {
+        summary: `${sum}的遗产。${change}。${threat}。`,
+        confession: `${sum}。侦探，你知道这个数字对一个人意味着什么吗？${change}，可是${threat}。我只剩一个机会的窗口，我抓住了。`,
+      };
+    },
   },
   debt: {
     label: "讨债",
     leak: (v) => `${v.name} 这几个月在死命追讨旧账，欠他钱的人个个都不安生。`,
     killerHide: () => "我有没有欠过死者钱",
+    narrative: (v, killer, rng) => {
+      const amount = pick(["一万五千银元", "三万二", "我在大世界输掉的所有筹码", "这辈子都还不完的数"], rng);
+      const reason = pick(["大世界赌台上的几手烂牌", "跑马厅第五场押错了一匹马", "他自己经纪人给的那条变成毒药的股票内幕", "民国三十五年那笔做砸的生意"], rng);
+      const press  = pick(["他撂话礼拜五前不还就放人来收", "他要礼拜一就去找我老板", "他要把这事原原本本说给我太太听"], rng);
+      return {
+        summary: `凶手欠 ${v.name} ${amount}，源自${reason}。${press}。`,
+        confession: `${amount}。从${reason}起，那种欠账你这辈子也爬不出来。${press}。我没存过这个心，可那一刻摆在我面前——我看不到第二条路。`,
+      };
+    },
   },
   coverup: {
     label: "掩盖旧案",
     leak: (v) => `${v.name} 这阵在挖某件陈年烂事，挖谁的不知道，他自己讳莫如深。`,
     killerHide: () => "死者也许正在查我什么",
+    narrative: (v, killer, rng) => {
+      const buried = pick(["民国二十八年苏州河里那具尸体", "一本本不该存在的账", "卢家那场大火真正是谁点的", "我留在天津的那个孩子", "我十五年没用过的那个名字"], rng);
+      const close  = pick(["他下个礼拜就要把稿子交出去", "他已经见过法租界一个稽查", "还有两场访问排着", "卷宗就摆在他桌面上"], rng);
+      return {
+        summary: `凶手的旧事是${buried}。${v.name} 已经拼出大半，${close}。`,
+        confession: `有些事埋下去，只在没人翻的时候才算埋住了。${v.name} 把${buried}给翻了出来。${close}。我必须在我整个人生和他之间选一个。`,
+      };
+    },
   },
   revenge: {
     label: "宿怨",
     leak: (v) => `${v.name} 当年毁过一个人，那种事，能记一辈子。`,
     killerHide: () => "我和死者之间有没有什么陈年恩怨",
+    narrative: (v, killer, rng) => {
+      const wound = pick(["民国二十八年无中生有毁了我兄弟的前程", "我十二岁那年逼我父亲跳了苏州河", "诬陷我搭档让他上了刑场", "战乱里抢走了我所有"], rng);
+      const wait  = pick(["我等了八年", "我一直等到该来的那一刻自己来", "每年我都跟自己说算了——每年都没算"], rng);
+      return {
+        summary: `凶手是来报陈年恩怨的：${v.name} 当年${wound}。${wait}。`,
+        confession: `他当年${wound}。${wait}。今晚不是巧合，侦探。今晚是我多少年前就跟他订下的一场约。`,
+      };
+    },
   },
   exposure: {
     label: "公开揭发",
     leak: (v) => `${v.name} 这两天准备在《申报》上抖出谁的丑事，登出来够要谁的命。`,
     killerHide: () => "死者也许知道我什么不能见光的事",
+    narrative: (v, killer, rng) => {
+      const what  = pick(["我和那位议员太太之间的事", "民国三十一年那次堕胎，本来不该有人知道", "我这些钱真正是从哪来的", "那段会让我家散掉的私情"], rng);
+      const where = pick(["《申报》的社交版", "《新闻报》一个署名专栏", "一本小杂志，可看的人都是该看见的人", "礼拜二早上要播的电台节目"], rng);
+      return {
+        summary: `${v.name} 准备在${where}上揭发${what}。`,
+        confession: `${what}。他要把这事登在${where}。登出来之后，前途没有了，家也没了，人都不算个人了。我做了选择。`,
+      };
+    },
   },
 };
 
 const MOTIVES_BY_LANG = { en: MOTIVES_EN, zh: MOTIVES_ZH };
+
+/* ============== Method profiles ==============
+   Per-case murder method: how it actually went down. Picked at case
+   generation, written into _methodDetail, fed to the Final Showdown
+   confession prompt and the reveal monologue so the killer's narrative
+   has texture (premeditated vs heat-of-moment, struggle vs surprise,
+   weapon brought vs grabbed). Profiles are weapon-aware where it matters
+   (firearms can't strangle; poison can't cause defensive wounds).      */
+
+function _isFirearm(weapon) {
+  return /revolver|derringer|pistol|gun|左轮|袖珍枪/.test(weapon);
+}
+function _isStrangle(weapon) {
+  return /garrote|wire|silk|绳|丝/.test(weapon);
+}
+function _isPoison(weapon) {
+  return /poison|martini|药|毒/.test(weapon);
+}
+function _isBlunt(weapon) {
+  return /candlestick|blackjack|烛台|警棍/.test(weapon);
+}
+
+const METHOD_PROFILES_EN = [
+  { id: "premed-clean", premeditated: true,  struggle: false, weaponBrought: true,
+    summary: (w, s) => `Premeditated. Killer arrived at ${s} with the ${w} concealed. Single clean strike, victim never raised a hand. Body left where it fell.` },
+  { id: "premed-ambush", premeditated: true, struggle: false, weaponBrought: true,
+    summary: (w, s) => `Surprise from behind in ${s}. Victim never saw it coming. ${w} used once, neat work — almost professional.` },
+  { id: "heat-grab",    premeditated: false, struggle: true,  weaponBrought: false,
+    summary: (w, s) => `Heat of the moment. The ${w} was already at ${s} — argument escalated, killer grabbed it, three or four blows. Defensive wounds on the forearms.` },
+  { id: "heat-struggle",premeditated: false, struggle: true,  weaponBrought: false,
+    summary: (w, s) => `Struggle in ${s}. Furniture overturned, lamp smashed, ${w} found beside the body. Personal — close-quarters work, not pretty.` },
+  { id: "premed-staged",premeditated: true,  struggle: false, weaponBrought: false,
+    summary: (w, s) => `Killer waited inside ${s} for the victim to arrive. Used the ${w} that was already there — wanted it to look impulsive. It didn't quite read.` },
+  { id: "poison-quiet", premeditated: true,  struggle: false, weaponBrought: false, weaponClass: "poison",
+    summary: (w, s) => `Cold, careful. The ${w} was prepared in advance, slipped to the victim at ${s}. No struggle. Victim was dead before they hit the floor.` },
+  { id: "shot-distance",premeditated: true,  struggle: false, weaponBrought: true, weaponClass: "firearm",
+    summary: (w, s) => `Single shot from across ${s}. Killer arrived ready, fired once, walked out before anyone reached the door. Drinks knocked over, no defensive wounds.` },
+  { id: "strangle-personal", premeditated: true, struggle: true, weaponBrought: true, weaponClass: "strangle",
+    summary: (w, s) => `${w} from behind in ${s}. Took thirty seconds, maybe forty. Personal — you don't strangle a stranger.` },
+];
+
+const METHOD_PROFILES_ZH = [
+  { id: "premed-clean", premeditated: true,  struggle: false, weaponBrought: true,
+    summary: (w, s) => `预谋作案。凶手把${w}藏在身上进了${s}。一击毙命，死者连手都没来得及抬。尸体留在原地未动。` },
+  { id: "premed-ambush", premeditated: true, struggle: false, weaponBrought: true,
+    summary: (w, s) => `${s}里背后偷袭。死者根本没察觉。${w}只用了一下，干净利落——几乎像是行家。` },
+  { id: "heat-grab",    premeditated: false, struggle: true,  weaponBrought: false,
+    summary: (w, s) => `临时起意。${w}本来就在${s}，争执升级，凶手抄起来连捅三四下。死者前臂留有抵御伤痕。` },
+  { id: "heat-struggle",premeditated: false, struggle: true,  weaponBrought: false,
+    summary: (w, s) => `${s}里有过激烈搏斗。家具翻倒，灯被打碎，${w}就丢在尸体旁。私人恩怨，近身缠斗，场面不好看。` },
+  { id: "premed-staged",premeditated: true,  struggle: false, weaponBrought: false,
+    summary: (w, s) => `凶手提前埋伏在${s}里等死者上门。用的是现场原本就有的${w}——刻意做成临时起意的样子。可惜手法太干净，反而露了痕迹。` },
+  { id: "poison-quiet", premeditated: true,  struggle: false, weaponBrought: false, weaponClass: "poison",
+    summary: (w, s) => `冷静、周到。${w}事先调好，${s}里递到死者手上。没有挣扎。人还没倒地就咽了气。` },
+  { id: "shot-distance",premeditated: true,  struggle: false, weaponBrought: true, weaponClass: "firearm",
+    summary: (w, s) => `${s}里一枪结果，从对面打过来。凶手有备而来，开完一枪在有人反应过来之前就走了。酒杯打翻，无抵御伤痕。` },
+  { id: "strangle-personal", premeditated: true, struggle: true, weaponBrought: true, weaponClass: "strangle",
+    summary: (w, s) => `${s}里背后用${w}勒死，三十秒，最多四十秒。私人恩怨——勒死一个人，那不是对陌生人下得了的手。` },
+];
+
+function generateMethodDetail(weapon, scene, lang, rng) {
+  const profiles = (lang === "zh") ? METHOD_PROFILES_ZH : METHOD_PROFILES_EN;
+  // Filter out weapon-incompatible profiles (e.g. only firearms can do shot-distance).
+  const eligible = profiles.filter(p => {
+    if (p.weaponClass === "firearm")  return _isFirearm(weapon);
+    if (p.weaponClass === "poison")   return _isPoison(weapon);
+    if (p.weaponClass === "strangle") return _isStrangle(weapon);
+    // Generic profiles: skip the firearm/poison/strangle-only animations
+    if (_isFirearm(weapon))   return p.id === "premed-clean" || p.id === "shot-distance";
+    if (_isPoison(weapon))    return p.id === "poison-quiet" || p.id === "premed-staged";
+    if (_isStrangle(weapon))  return p.id === "strangle-personal" || p.id === "premed-clean";
+    return !p.weaponClass;
+  });
+  const pool = eligible.length ? eligible : profiles.filter(p => !p.weaponClass);
+  const profile = pick(pool, rng);
+  return {
+    profileId: profile.id,
+    premeditated: profile.premeditated,
+    struggle:     profile.struggle,
+    weaponBrought:profile.weaponBrought,
+    summary:      profile.summary(weapon, scene),
+  };
+}
 
 /* ============== Difficulty levels ============== */
 
@@ -1071,6 +1270,14 @@ async function generateCase(lang = "en", seedInput = null, difficulty = "normal"
   const motiveLeak = (motiveLeakerIdx != null)
     ? MOTIVES_BY_LANG[lang][motiveType].leak(victim)
     : null;
+  // Per-case motive specifics (amount, leverage, target...) — used for the
+  // Final Showdown confession and the reveal monologue. Older motive entries
+  // may not yet have a `narrative()` field; tolerate that for backward compat.
+  const motiveSpecific = (motiveType && MOTIVES_BY_LANG[lang][motiveType].narrative)
+    ? MOTIVES_BY_LANG[lang][motiveType].narrative(victim, killerName, rng)
+    : null;
+  // Per-case method profile (premeditated vs heat, struggle, weapon brought).
+  const methodDetail = generateMethodDetail(weapon, location, lang, rng);
   const falseObservation = (falseWitnessIdx != null && falselyAccusedIdx != null)
     ? G.witnessFact(suspectNames[falselyAccusedIdx], location, timeOfDeath)
     : null;
@@ -1120,6 +1327,8 @@ async function generateCase(lang = "en", seedInput = null, difficulty = "normal"
     _salt: salt,
     _killer: killerName,
     _motiveType: motiveType,
+    _motiveSpecific: motiveSpecific,
+    _methodDetail: methodDetail,
     timeOfDeath,
     victim,
     scene: location,
