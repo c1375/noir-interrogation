@@ -1284,7 +1284,14 @@ async function _callGeminiRaw(systemText, userText, maxTokens) {
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: systemText }] },
       contents: [{ role: "user", parts: [{ text: userText }] }],
-      generationConfig: { maxOutputTokens: maxTokens, temperature: 0.85 },
+      generationConfig: {
+        maxOutputTokens: maxTokens,
+        temperature: 0.85,
+        // Disable thinking. Gemini 2.5 spends output budget on internal
+        // reasoning by default; for creative narrative we'd rather all
+        // tokens go to visible text.
+        thinkingConfig: { thinkingBudget: 0 },
+      },
     }),
   });
   if (!res.ok) {
@@ -1425,7 +1432,11 @@ async function callGemini(suspect, userQuestion) {
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents,
-      generationConfig: { maxOutputTokens: 800, temperature: 0.9 },
+      generationConfig: {
+        maxOutputTokens: 800,
+        temperature: 0.9,
+        thinkingConfig: { thinkingBudget: 0 },
+      },
     }),
   });
 
