@@ -15,11 +15,23 @@ const STATE = {
   provider: "anthropic",      // "anthropic" | "google" | "qwen"
   apiKeys:   { anthropic: null, google: null, qwen: null },
   apiModels: { anthropic: "claude-haiku-4-5-20251001", google: "gemini-2.5-flash", qwen: "qwen-plus" },
-  mode: "offline",            // "offline" | "ai"
   lang: "en",                 // "en" | "zh"
   difficulty: "normal",       // "easy" | "normal" | "hard"
   narrativeOn: true,          // LLM-generated opener + reveal monologue
+  activeAbort: null,          // AbortController for in-flight interrogation call
+  narrativeAbort: null,       // AbortController for in-flight opener/reveal call
+  askInFlight: false,         // double-send guard for askAI / askPreset
 };
+
+function isAbortError(err) {
+  return err && (err.name === "AbortError" || err.code === 20);
+}
+function abortInterrogation() {
+  if (STATE.activeAbort) { STATE.activeAbort.abort(); STATE.activeAbort = null; }
+}
+function abortNarrative() {
+  if (STATE.narrativeAbort) { STATE.narrativeAbort.abort(); STATE.narrativeAbort = null; }
+}
 
 const LS = {
   // legacy single-key (migrated to anthropic)
@@ -40,7 +52,114 @@ const LS = {
   narrative:        "noir.narrative",
   tutorialSeen:     "noir.tutorialSeen",
   stats:            "noir.stats",
+  session:          "noir.session",
 };
+
+// ---- Session snapshot (refresh-resume) ----
+// We persist the in-progress case + conversations on each committed turn so a
+// refresh / tab close doesn't kill the player's progress. Killer identity is
+// in the case object in plaintext — same honor-system caveat the README calls
+// out for the disk-based skill version. Cleared on verdict / new case / discard.
+function saveSession() {
+  if (!STATE.case || STATE.case.status !== "open") return;
+  const snap = {
+    v: 1,
+    case: STATE.case,
+    conversations: STATE.conversations,
+    notes: STATE.notes,
+    evidence: STATE.evidence,
+    currentSuspectName: STATE.currentSuspect ? STATE.currentSuspect.name : null,
+    savedAt: Date.now(),
+  };
+  try {
+    lsSet(LS.session, JSON.stringify(snap));
+  } catch (_) { /* lsSet already warned */ }
+}
+
+function loadSession() {
+  const raw = lsGet(LS.session);
+  if (!raw) return null;
+  try {
+    const snap = JSON.parse(raw);
+    if (!snap || !snap.case || snap.v !== 1) return null;
+    return snap;
+  } catch (_) {
+    lsRemove(LS.session);
+    return null;
+  }
+}
+
+function clearSession() { lsRemove(LS.session); }
+
+function maybeShowResumeBanner() {
+  const snap = loadSession();
+  const banner = $("#resume-banner");
+  if (!banner) return;
+  if (!snap || !snap.case || snap.case.status !== "open") {
+    banner.hidden = true;
+    return;
+  }
+  const idEl = $("#resume-case-id");
+  if (idEl) idEl.textContent = "#" + snap.case.caseId;
+  banner.hidden = false;
+}
+
+function hideResumeBanner() {
+  const b = $("#resume-banner");
+  if (b) b.hidden = true;
+}
+
+function resumeSession() {
+  const snap = loadSession();
+  if (!snap || !snap.case) {
+    hideResumeBanner();
+    return;
+  }
+  STATE.case = snap.case;
+  STATE.conversations = snap.conversations || {};
+  STATE.notes = snap.notes || {};
+  STATE.notesActiveTab = null;
+  STATE.evidence = snap.evidence || [];
+  STATE.evidencePickerOpen = false;
+  STATE.currentSuspect = snap.currentSuspectName
+    ? (STATE.case.suspects.find(s => s.name === snap.currentSuspectName) || null)
+    : null;
+  hideResumeBanner();
+  if (STATE.currentSuspect) {
+    renderInterrogation(STATE.currentSuspect);
+    show("screen-interrogation");
+  } else {
+    gotoLineup();
+  }
+}
+
+function discardSession() {
+  if (!confirm(t("resume.discardConfirm"))) return;
+  clearSession();
+  hideResumeBanner();
+}
+
+// Safe localStorage wrappers. Private mode / quota-full / disabled storage
+// throw on access; without these we'd silently lose API keys and settings,
+// or crash on first read. _lsWarned guards against spamming the console.
+let _lsWarned = false;
+function _lsWarn(op, err) {
+  if (_lsWarned) return;
+  _lsWarned = true;
+  console.warn(`[noir] localStorage ${op} failed (private mode or quota?). Settings won't persist.`, err && err.message);
+}
+function lsGet(key) {
+  try { return localStorage.getItem(key); }
+  catch (err) { _lsWarn("read", err); return null; }
+}
+function lsSet(key, value) {
+  try { localStorage.setItem(key, value); return true; }
+  catch (err) { _lsWarn("write", err); return false; }
+}
+function lsRemove(key) {
+  try { localStorage.removeItem(key); return true; }
+  catch (err) { _lsWarn("remove", err); return false; }
+}
 
 const DEFAULT_STATS = {
   played:    0,
@@ -54,9 +173,9 @@ const DEFAULT_STATS = {
 };
 
 function loadStats() {
+  const raw = lsGet(LS.stats);
+  if (!raw) return JSON.parse(JSON.stringify(DEFAULT_STATS));
   try {
-    const raw = localStorage.getItem(LS.stats);
-    if (!raw) return JSON.parse(JSON.stringify(DEFAULT_STATS));
     const s = JSON.parse(raw);
     // Defensive merge with defaults so older stored shapes don't break
     return Object.assign({}, JSON.parse(JSON.stringify(DEFAULT_STATS)), s);
@@ -66,7 +185,7 @@ function loadStats() {
 }
 
 function saveStats(s) {
-  localStorage.setItem(LS.stats, JSON.stringify(s));
+  lsSet(LS.stats, JSON.stringify(s));
 }
 
 function recordVerdict(verdict) {
@@ -162,7 +281,7 @@ function audioMuted() { return AUDIO.muted; }
 
 function audioToggle() {
   AUDIO.muted = !AUDIO.muted;
-  localStorage.setItem(LS.muted, AUDIO.muted ? "1" : "0");
+  lsSet(LS.muted, AUDIO.muted ? "1" : "0");
   refreshAudioToggle();
   if (AUDIO.muted) {
     stopAmbient();
@@ -174,7 +293,7 @@ function audioToggle() {
 
 function ambientToggle() {
   AUDIO.ambientOn = !AUDIO.ambientOn;
-  localStorage.setItem(LS.ambient, AUDIO.ambientOn ? "1" : "0");
+  lsSet(LS.ambient, AUDIO.ambientOn ? "1" : "0");
   $$("[data-action=toggle-ambient]").forEach(b => b.classList.toggle("active", AUDIO.ambientOn));
   if (AUDIO.ambientOn && !AUDIO.muted) startAmbient();
   else stopAmbient();
@@ -182,7 +301,7 @@ function ambientToggle() {
 
 function narrativeToggle() {
   STATE.narrativeOn = !STATE.narrativeOn;
-  localStorage.setItem(LS.narrative, STATE.narrativeOn ? "1" : "0");
+  lsSet(LS.narrative, STATE.narrativeOn ? "1" : "0");
   $$("[data-action=toggle-narrative]").forEach(b => b.classList.toggle("active", STATE.narrativeOn));
 }
 
@@ -425,10 +544,7 @@ const STRINGS = {
 
     "btn.backToLineup":      "← LINEUP",
     "interrog.detective":    "DETECTIVE",
-    "interrog.modeLabel":    "Mode:",
-    "mode.offline":          "PRESETS",
-    "mode.ai":               "PRESETS + AI",
-    "interrog.aiNoKey":      "Set an LLM API key in Settings to unlock free-text + LLM-powered preset answers.",
+    "interrog.aiNoKey":      "Set an LLM API key in Settings to ask questions.",
     "interrog.aiActive":     (model) => `AI mode active. Preset clicks and free text both go through ${model}.`,
     "interrog.aiPlaceholder":"Ask anything... (Shift+Enter for newline)",
     "btn.send":              "SEND",
@@ -485,7 +601,7 @@ const STRINGS = {
     "settings.model":        "Model",
     "btn.save":              "SAVE",
     "btn.clear":             "CLEAR",
-    "settings.noKey":        "No key saved. AI mode disabled; OFFLINE mode still works.",
+    "settings.noKey":        "No key saved. An API key is required to start a case.",
     "settings.keySet":       (masked, justSaved) => (justSaved ? "Saved. " : "") +
                               `Key set (${masked}). AI mode is now available in interrogation.`,
     "settings.statsSection": "Statistics & Achievements",
@@ -529,6 +645,7 @@ const STRINGS = {
     "shortcuts.caseFile":    "Case file modal",
     "shortcuts.interrog":    "Interrogation",
     "shortcuts.notes":       "Toggle notes",
+    "shortcuts.timeline":    "Timeline modal",
     "shortcuts.backLineup":  "Back to lineup",
     "shortcuts.global":      "Anywhere",
     "shortcuts.toggleHelp":  "Toggle this help",
@@ -541,6 +658,18 @@ const STRINGS = {
     "settings.narrativeDesc": "When enabled, the briefing gains an atmospheric scene-setter and the verdict reveals a noir-style closing monologue tying motive, witness, and red herrings together. Adds 2 small API calls per case.",
     "narrative.openerLoading":"…(narrator clearing his throat)…",
     "narrative.revealLoading":"…(detective lighting a final cigarette)…",
+    "btn.timeline":          "TIMELINE",
+    "resume.label":          "Case in progress",
+    "resume.resume":         "RESUME",
+    "resume.discard":        "discard",
+    "resume.discardConfirm": "Discard the saved case? This can't be undone.",
+    "timeline.stamp":        "TIMELINE",
+    "timeline.intro":        "Compare each suspect's claimed alibi against any witness statement that names them. A contradiction is your case.",
+    "timeline.alibisHeader": "Claimed alibis",
+    "timeline.witnessHeader":"Witness statements collected",
+    "timeline.notYetQuestioned": "(not yet questioned — pull them in)",
+    "timeline.noWitness":    "No witness statements collected yet. Question more suspects to draw them out.",
+    "timeline.namesPill":    (name) => `names ${name}`,
   },
 
   zh: {
@@ -605,10 +734,7 @@ const STRINGS = {
 
     "btn.backToLineup":      "← 名单",
     "interrog.detective":    "警官",
-    "interrog.modeLabel":    "模式：",
-    "mode.offline":          "预设问题",
-    "mode.ai":               "预设 + AI 自由问",
-    "interrog.aiNoKey":      "在「设置」里填入 LLM API 密钥即可解锁自由打字提问，预设按钮也会改由 LLM 即兴回答。",
+    "interrog.aiNoKey":      "请先在「设置」里填入 LLM API 密钥才能审讯。",
     "interrog.aiActive":     (model) => `AI 已启用。预设按钮和自由文本都走 ${model}。`,
     "interrog.aiPlaceholder":"随便问（Shift+Enter 换行）……",
     "btn.send":              "发送",
@@ -665,7 +791,7 @@ const STRINGS = {
     "settings.model":        "模型",
     "btn.save":              "保存",
     "btn.clear":             "清除",
-    "settings.noKey":        "未保存密钥。AI 模式不可用；离线模式仍可正常游玩。",
+    "settings.noKey":        "未保存密钥。需要填入 API 密钥才能开始新案。",
     "settings.keySet":       (masked, justSaved) => (justSaved ? "已保存。" : "") +
                               `密钥已设置（${masked}）。审讯时即可启用 AI 模式。`,
     "settings.statsSection": "统计与成就",
@@ -709,6 +835,7 @@ const STRINGS = {
     "shortcuts.caseFile":    "案件档案",
     "shortcuts.interrog":    "审讯室",
     "shortcuts.notes":       "切换笔记",
+    "shortcuts.timeline":    "时间线对比",
     "shortcuts.backLineup":  "返回名单",
     "shortcuts.global":      "全局",
     "shortcuts.toggleHelp":  "显示/隐藏此帮助",
@@ -721,6 +848,18 @@ const STRINGS = {
     "settings.narrativeDesc": "开启后，案情简报上方增加一段氛围开场，揭幕时多一段 noir 风格的侦探独白，把动机/目击/红鲱鱼串成完整真相。每局多 2 次小型 API 调用。",
     "narrative.openerLoading":"……（旁白正在清嗓子）……",
     "narrative.revealLoading":"……（侦探正点上最后一支烟）……",
+    "btn.timeline":          "时间线",
+    "resume.label":          "未结案件",
+    "resume.resume":         "继续",
+    "resume.discard":        "丢弃",
+    "resume.discardConfirm": "确定丢弃存档案件吗？此操作无法撤销。",
+    "timeline.stamp":        "时间线对比",
+    "timeline.intro":        "把每个嫌犯的不在场证明跟「点了名的」目击证词放在一起看。矛盾点就是破案点。",
+    "timeline.alibisHeader": "声称的不在场证明",
+    "timeline.witnessHeader":"已收集的目击证词",
+    "timeline.notYetQuestioned": "（还没审过 — 把人叫进来）",
+    "timeline.noWitness":    "还没收集到目击证词。多审几个嫌疑人，让他们开口。",
+    "timeline.namesPill":    (name) => `点名 ${name}`,
   },
 };
 
@@ -759,7 +898,7 @@ function applyI18n() {
 function setLang(lang) {
   if (lang !== "en" && lang !== "zh") return;
   STATE.lang = lang;
-  localStorage.setItem(LS.lang, lang);
+  lsSet(LS.lang, lang);
   applyI18n();
   // Refresh dynamic strings that data-i18n doesn't catch.
   setDifficulty(STATE.difficulty);
@@ -777,7 +916,7 @@ function setLang(lang) {
     if ($("#screen-interrogation").classList.contains("active") && STATE.currentSuspect) {
       // refresh the question menu in current language
       renderQuestionMenu();
-      setMode(STATE.mode);
+      refreshAskArea();
     }
   }
   updateApiStatus();
@@ -832,11 +971,17 @@ function renderBriefing() {
         openerEl.innerHTML = `<p>${escapeHtml(c.narrativeOpener)}</p>`;
       } else {
         openerEl.innerHTML = `<p class="narrative-loading">${t("narrative.openerLoading")}</p>`;
-        generateOpener(c).then(text => {
+        abortNarrative();
+        const ctrl = new AbortController();
+        STATE.narrativeAbort = ctrl;
+        generateOpener(c, { signal: ctrl.signal }).then(text => {
+          if (STATE.narrativeAbort === ctrl) STATE.narrativeAbort = null;
           if (STATE.case === c) {
             openerEl.innerHTML = `<p>${escapeHtml(text)}</p>`;
           }
         }).catch(err => {
+          if (STATE.narrativeAbort === ctrl) STATE.narrativeAbort = null;
+          if (isAbortError(err)) return;
           console.warn("[noir] opener LLM failed:", err.message);
           openerEl.hidden = true;
         });
@@ -892,7 +1037,11 @@ function renderLineupGrid(containerId, onPick) {
 }
 
 function renderInterrogation(suspect) {
+  // Cancel any in-flight reply for the previous suspect so it can't land
+  // in this conversation thread (or burn API quota after a switch).
+  abortInterrogation();
   STATE.currentSuspect = suspect;
+  saveSession();
   $("#interrog-name").textContent  = suspect.name;
   $("#interrog-occ").textContent   = suspect.occupation;
   $("#interrog-voice").textContent = suspect.personalityHint;
@@ -907,7 +1056,7 @@ function renderInterrogation(suspect) {
   history.forEach(turn => addBubble(turn.role, turn.content, suspect.name, false));
 
   renderQuestionMenu();
-  setMode(STATE.mode);
+  refreshAskArea();
   refreshConfrontButton();
   closeEvidencePicker();
   setupScrollWatcher();
@@ -961,14 +1110,32 @@ function confrontWith(evidence) {
 
   const thinking = addBubble("thinking", "", suspect.name);
 
-  if (STATE.mode === "ai" && activeKey()) {
-    callLLM(suspect, framing).then(reply => {
-      thinking.remove();
-      addBubble("suspect", reply, suspect.name);
+  if (activeKey()) {
+    let stream = null;
+    const onDelta = (chunk) => {
+      if (STATE.currentSuspect !== suspect) return;
+      if (!stream) {
+        thinking.remove();
+        stream = makeStreamingBubble(suspect.name);
+      }
+      stream.append(chunk);
+    };
+    callLLM(suspect, framing, { onDelta }).then(reply => {
+      if (STATE.currentSuspect !== suspect) {
+        if (stream) stream.cancel(); else thinking.remove();
+        return;
+      }
+      if (stream) {
+        stream.finalize(reply);
+      } else {
+        thinking.remove();
+        addBubble("suspect", reply, suspect.name);
+      }
       pushTurn("suspect", reply);
       addNote(suspect.name, "confront", framing, reply);
     }).catch(err => {
-      thinking.remove();
+      if (stream) stream.cancel(); else thinking.remove();
+      if (isAbortError(err)) return;
       addBubble("system",
         `${t("interrog.errorPrefix")}${err.message}${t("interrog.errorSuffix")}`,
         suspect.name);
@@ -985,28 +1152,34 @@ function confrontWith(evidence) {
 }
 
 function renderQuestionMenu() {
-  const offline = $("#ask-offline");
-  offline.innerHTML = "";
+  const presetRow = $("#ask-offline");
+  presetRow.innerHTML = "";
   const menu = getQuestionMenu(STATE.case ? STATE.case.lang : STATE.lang);
   menu.forEach(q => {
-    const b = el("button", { onclick: () => askOffline(q.id) }, q.label);
-    offline.appendChild(b);
+    const b = el("button", { onclick: () => askPreset(q.id) }, q.label);
+    presetRow.appendChild(b);
   });
 }
 
-function setMode(_mode) {
-  // The game always runs in AI mode now (key is required to start).
-  STATE.mode = "ai";
+// The game requires an API key to start, so the ask area always shows both
+// preset buttons and the free-text input. This just refreshes the provider
+// badge / hint text after a provider or key change.
+function refreshAskArea() {
   $("#ask-offline").hidden = false;
   $("#ask-ai").hidden = false;
-  const hint = $("#ai-hint");
   const provLabel = PROVIDERS[STATE.provider].label;
-  hint.textContent = t("interrog.aiActive", `${provLabel} · ${activeModel()}`);
-  hint.style.color = "var(--paper-warm)";
-  $("#ai-input").disabled = false;
-  // Mirror the active provider in the ask-area header
+  const hint = $("#ai-hint");
+  if (activeKey()) {
+    hint.textContent = t("interrog.aiActive", `${provLabel} · ${activeModel()}`);
+    hint.style.color = "var(--paper-warm)";
+    $("#ai-input").disabled = false;
+  } else {
+    hint.textContent = t("interrog.aiNoKey");
+    hint.style.color = "";
+    $("#ai-input").disabled = true;
+  }
   const provBadge = $("#active-provider");
-  if (provBadge) provBadge.textContent = `${provLabel} · ${activeModel()}`;
+  if (provBadge) provBadge.textContent = activeKey() ? `${provLabel} · ${activeModel()}` : "";
 }
 
 function scrollConvoToBottom() {
@@ -1061,6 +1234,42 @@ function addBubble(role, content, suspectName, scroll = true) {
   return bubble;
 }
 
+// Streaming bubble: pre-create an empty suspect bubble we can append to as
+// tokens arrive. Returns { bubble, append, finalize, cancel } where append(s)
+// is constant-time text concatenation. The bubble has a `streaming` class
+// so CSS can render a blinking caret while it grows.
+function makeStreamingBubble(suspectName) {
+  const log = $("#conversation");
+  const textNode = document.createTextNode("");
+  const bubble = el("div",
+    { class: "bubble suspect streaming", "data-name": suspectName });
+  bubble.appendChild(textNode);
+  log.appendChild(bubble);
+  log.scrollTop = log.scrollHeight;
+  let firstChunk = true;
+  return {
+    bubble,
+    append(chunk) {
+      if (firstChunk) { sfxClick(); firstChunk = false; }
+      textNode.appendData(chunk);
+      // Auto-scroll only if user is near the bottom; preserves their position
+      // if they've scrolled up to read earlier in the thread.
+      const dist = log.scrollHeight - log.scrollTop - log.clientHeight;
+      if (dist < 120) log.scrollTop = log.scrollHeight;
+    },
+    finalize(finalText) {
+      bubble.classList.remove("streaming");
+      // If a leak scrub or other post-processing changed the text, reconcile.
+      if (finalText != null && textNode.data !== finalText) {
+        textNode.data = finalText;
+      }
+    },
+    cancel() {
+      bubble.remove();
+    },
+  };
+}
+
 function pushTurn(role, content) {
   const name = STATE.currentSuspect.name;
   if (!STATE.conversations[name]) STATE.conversations[name] = [];
@@ -1088,11 +1297,17 @@ function maybeCollectEvidence(suspect) {
 /* ============== Case Notes ============== */
 
 function addNote(suspectName, category, question, answer) {
-  if (!STATE.notes[suspectName]) STATE.notes[suspectName] = {};
+  const isNewSuspect = !STATE.notes[suspectName];
+  if (isNewSuspect) STATE.notes[suspectName] = {};
   if (!STATE.notes[suspectName][category]) STATE.notes[suspectName][category] = [];
   STATE.notes[suspectName][category].push({ q: question, a: answer });
   if (!STATE.notesActiveTab) STATE.notesActiveTab = suspectName;
-  if (STATE.notesOpen) renderNotes();
+  if (STATE.notesOpen) {
+    // Tabs only change when a brand-new suspect gets their first note;
+    // a note for a non-active suspect doesn't need any DOM work.
+    if (isNewSuspect) renderNotesTabs();
+    if (suspectName === STATE.notesActiveTab) renderNotesBody();
+  }
 }
 
 function toggleNotes() {
@@ -1107,27 +1322,45 @@ function toggleNotes() {
 }
 
 function renderNotes() {
-  const tabsEl = $("#notes-tabs");
-  const bodyEl = $("#notes-body");
-  const names = Object.keys(STATE.notes);
-  if (names.length === 0) {
-    tabsEl.innerHTML = "";
-    bodyEl.innerHTML = `<p class="notes-empty">${t("notes.empty")}</p>`;
-    return;
-  }
-  if (!names.includes(STATE.notesActiveTab)) STATE.notesActiveTab = names[0];
+  renderNotesTabs();
+  renderNotesBody();
+}
 
+function switchNotesTab(name) {
+  STATE.notesActiveTab = name;
+  $$("#notes-tabs .notes-tab").forEach(b => {
+    b.classList.toggle("active", b.dataset.name === name);
+  });
+  renderNotesBody();
+}
+
+function renderNotesTabs() {
+  const tabsEl = $("#notes-tabs");
   tabsEl.innerHTML = "";
+  const names = Object.keys(STATE.notes);
+  if (names.length === 0) return;
+  if (!names.includes(STATE.notesActiveTab)) STATE.notesActiveTab = names[0];
+  const frag = document.createDocumentFragment();
   names.forEach(n => {
     const b = el("button", {
       class: "notes-tab" + (n === STATE.notesActiveTab ? " active" : ""),
-      onclick: () => { STATE.notesActiveTab = n; renderNotes(); },
+      dataset: { name: n },
+      onclick: () => switchNotesTab(n),
     }, n);
-    tabsEl.appendChild(b);
+    frag.appendChild(b);
   });
+  tabsEl.appendChild(frag);
+}
 
-  const suspectNotes = STATE.notes[STATE.notesActiveTab] || {};
+function renderNotesBody() {
+  const bodyEl = $("#notes-body");
   bodyEl.innerHTML = "";
+  const names = Object.keys(STATE.notes);
+  if (names.length === 0) {
+    bodyEl.innerHTML = `<p class="notes-empty">${t("notes.empty")}</p>`;
+    return;
+  }
+  const suspectNotes = STATE.notes[STATE.notesActiveTab] || {};
   // Display in canonical question order (then anything else)
   const canonical = ["alibi", "tod", "knew_victim", "saw_anyone",
                      "suspicious", "hiding", "weapon", "confront",
@@ -1135,7 +1368,7 @@ function renderNotes() {
   const orderedCats = canonical
     .filter(c => suspectNotes[c])
     .concat(Object.keys(suspectNotes).filter(c => !canonical.includes(c)));
-
+  const frag = document.createDocumentFragment();
   orderedCats.forEach(cat => {
     const sec = el("section", { class: "notes-section" });
     sec.appendChild(el("h4", {}, t("notes.cat." + cat)));
@@ -1145,13 +1378,15 @@ function renderNotes() {
       entry.appendChild(el("div", { class: "notes-a" }, a));
       sec.appendChild(entry);
     });
-    bodyEl.appendChild(sec);
+    frag.appendChild(sec);
   });
+  bodyEl.appendChild(frag);
 }
 
-/* ============================== offline mode ============================== */
+/* ============================== preset questions ============================== */
 
 function askPreset(questionId) {
+  if (STATE.askInFlight) return;
   const suspect = STATE.currentSuspect;
   const menu = getQuestionMenu(STATE.case.lang);
   const qLabel = menu.find(q => q.id === questionId).label;
@@ -1160,20 +1395,45 @@ function askPreset(questionId) {
   pushTurn("detective", qLabel);
 
   const thinking = addBubble("thinking", "", suspect.name);
+  abortInterrogation();
+  const ctrl = new AbortController();
+  STATE.activeAbort = ctrl;
+  STATE.askInFlight = true;
 
-  callLLM(suspect, qLabel).then(reply => {
-    thinking.remove();
-    addBubble("suspect", reply, suspect.name);
+  let stream = null;
+  const onDelta = (chunk) => {
+    if (ctrl.signal.aborted || STATE.currentSuspect !== suspect) return;
+    if (!stream) {
+      thinking.remove();
+      stream = makeStreamingBubble(suspect.name);
+    }
+    stream.append(chunk);
+  };
+
+  callLLM(suspect, qLabel, { signal: ctrl.signal, onDelta }).then(reply => {
+    if (ctrl.signal.aborted || STATE.currentSuspect !== suspect) {
+      if (stream) stream.cancel(); else thinking.remove();
+      return;
+    }
+    if (stream) {
+      stream.finalize(reply);
+    } else {
+      thinking.remove();
+      addBubble("suspect", reply, suspect.name);
+    }
     pushTurn("suspect", reply);
     addNote(suspect.name, questionId, qLabel, reply);
     STATE.case.questionCounts[suspect.name] =
       (STATE.case.questionCounts[suspect.name] || 0) + 1;
     maybeCollectEvidence(suspect);
+    saveSession();
   }).catch(err => {
+    if (stream) stream.cancel(); else thinking.remove();
+    if (isAbortError(err)) return;
+    if (STATE.currentSuspect !== suspect) return;
     // LLM call failed -- fall back to a templated response so the game
     // doesn't get stuck. Tell the player something went wrong.
     console.warn("[noir] LLM call failed, using template fallback:", err.message);
-    thinking.remove();
     addBubble("system",
       `${t("interrog.errorPrefix")}${err.message}${t("interrog.errorSuffix")}`,
       suspect.name);
@@ -1182,6 +1442,10 @@ function askPreset(questionId) {
     pushTurn("suspect", response);
     addNote(suspect.name, questionId, qLabel, response);
     maybeCollectEvidence(suspect);
+    saveSession();
+  }).finally(() => {
+    if (STATE.activeAbort === ctrl) STATE.activeAbort = null;
+    STATE.askInFlight = false;
   });
 
   if (questionId === "leave") {
@@ -1189,12 +1453,10 @@ function askPreset(questionId) {
   }
 }
 
-// Backwards-compat alias
-const askOffline = askPreset;
-
 /* ============================== AI mode ============================== */
 
 async function askAI() {
+  if (STATE.askInFlight) return;
   const input = $("#ai-input");
   const question = input.value.trim();
   if (!question) return;
@@ -1202,6 +1464,7 @@ async function askAI() {
     alert(t("interrog.aiSetKeyFirst"));
     return;
   }
+  STATE.askInFlight = true;
   input.value = "";
   input.disabled = true;
 
@@ -1210,40 +1473,103 @@ async function askAI() {
   pushTurn("detective", question);
 
   const thinking = addBubble("thinking", "", suspect.name);
+  abortInterrogation();
+  const ctrl = new AbortController();
+  STATE.activeAbort = ctrl;
+
+  let stream = null;
+  const onDelta = (chunk) => {
+    if (ctrl.signal.aborted || STATE.currentSuspect !== suspect) return;
+    if (!stream) {
+      thinking.remove();
+      stream = makeStreamingBubble(suspect.name);
+    }
+    stream.append(chunk);
+  };
 
   try {
-    const reply = await callLLM(suspect, question);
-    thinking.remove();
-    addBubble("suspect", reply, suspect.name);
+    const reply = await callLLM(suspect, question, { signal: ctrl.signal, onDelta });
+    if (ctrl.signal.aborted || STATE.currentSuspect !== suspect) {
+      if (stream) stream.cancel(); else thinking.remove();
+      return;
+    }
+    if (stream) {
+      stream.finalize(reply);
+    } else {
+      thinking.remove();
+      addBubble("suspect", reply, suspect.name);
+    }
     pushTurn("suspect", reply);
     addNote(suspect.name, "free_form", question, reply);
-    // Track question count for AI mode too (mirrors offline tracking)
     STATE.case.questionCounts[suspect.name] = (STATE.case.questionCounts[suspect.name] || 0) + 1;
     maybeCollectEvidence(suspect);
+    saveSession();
   } catch (err) {
-    thinking.remove();
+    if (stream) stream.cancel(); else thinking.remove();
+    if (isAbortError(err)) return;
+    if (STATE.currentSuspect !== suspect) return;
     addBubble("system",
       `${t("interrog.errorPrefix")}${err.message}${t("interrog.errorSuffix")}`,
       suspect.name);
     console.error(err);
   } finally {
+    if (STATE.activeAbort === ctrl) STATE.activeAbort = null;
+    STATE.askInFlight = false;
     input.disabled = false;
-    input.focus();
+    if (STATE.currentSuspect === suspect) input.focus();
   }
 }
 
-async function callLLM(suspect, userQuestion) {
+async function callLLM(suspect, userQuestion, opts = {}) {
   let reply;
-  if (STATE.provider === "google")     reply = await callGemini(suspect, userQuestion);
-  else if (STATE.provider === "qwen")  reply = await callQwen(suspect, userQuestion);
-  else                                  reply = await callClaude(suspect, userQuestion);
-  return scrubLeak(reply, suspect, STATE.case);
+  if (STATE.provider === "google")     reply = await callGemini(suspect, userQuestion, opts);
+  else if (STATE.provider === "qwen")  reply = await callQwen(suspect, userQuestion, opts);
+  else                                  reply = await callClaude(suspect, userQuestion, opts);
+  const scrubbed = scrubLeak(reply, suspect, STATE.case);
+  // If scrubLeak rewrote the reply, the streamed bubble is showing the
+  // unredacted text — surface the substitution so the caller can reconcile.
+  return scrubbed;
+}
+
+// ---- Generic SSE line iterator (shared by all three providers) ----
+async function* sseEvents(response) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      // SSE messages are separated by blank lines; data fields by single newlines
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).replace(/\r$/, "");
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trimStart();
+        if (data === "[DONE]") return;
+        try { yield JSON.parse(data); } catch (_) { /* skip malformed line */ }
+      }
+    }
+  } finally {
+    try { reader.releaseLock(); } catch (_) {}
+  }
+}
+
+async function _failedRequestError(provider, res) {
+  const text = await res.text();
+  let detail = text;
+  try { const j = JSON.parse(text); detail = j.error?.message || text; } catch (_) {}
+  return new Error(`${provider} ${res.status}: ${detail.slice(0, 200)}`);
 }
 
 // ---- Qwen (Alibaba 通义千问) via DashScope OpenAI-compatible endpoint ----
 const QWEN_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 
-async function _callQwenChat(messages, maxTokens, temperature) {
+// Non-streaming Qwen chat — used by narrative layer. Streaming for chat is
+// handled inline in callQwen() below.
+async function _callQwenChat(messages, maxTokens, temperature, opts = {}) {
   const res = await fetch(QWEN_URL, {
     method: "POST",
     headers: {
@@ -1256,13 +1582,9 @@ async function _callQwenChat(messages, maxTokens, temperature) {
       max_tokens: maxTokens,
       temperature,
     }),
+    signal: opts.signal,
   });
-  if (!res.ok) {
-    const text = await res.text();
-    let detail = text;
-    try { const j = JSON.parse(text); detail = j.error?.message || text; } catch (_) {}
-    throw new Error(`Qwen ${res.status}: ${detail.slice(0, 200)}`);
-  }
+  if (!res.ok) throw await _failedRequestError("Qwen", res);
   const data = await res.json();
   const choice = data.choices?.[0];
   const reply = choice?.message?.content || "";
@@ -1275,7 +1597,7 @@ async function _callQwenChat(messages, maxTokens, temperature) {
   return reply.trim();
 }
 
-async function callQwen(suspect, userQuestion) {
+async function callQwen(suspect, userQuestion, opts = {}) {
   const system = buildSystemPromptForSuspect(STATE.case, suspect);
   const history = (STATE.conversations[suspect.name] || []).filter(
     t => t.role === "detective" || t.role === "suspect"
@@ -1285,27 +1607,59 @@ async function callQwen(suspect, userQuestion) {
     if (turn.role === "detective") messages.push({ role: "user", content: turn.content });
     else if (turn.role === "suspect") messages.push({ role: "assistant", content: turn.content });
   }
-  return _callQwenChat(messages, 800, 0.9);
+  if (!opts.onDelta) return _callQwenChat(messages, 800, 0.9, opts);
+
+  const res = await fetch(QWEN_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${STATE.apiKeys.qwen}`,
+    },
+    body: JSON.stringify({
+      model: STATE.apiModels.qwen,
+      messages,
+      max_tokens: 800,
+      temperature: 0.9,
+      stream: true,
+    }),
+    signal: opts.signal,
+  });
+  if (!res.ok) throw await _failedRequestError("Qwen", res);
+  let acc = "";
+  let finishReason = null;
+  for await (const evt of sseEvents(res)) {
+    const choice = evt.choices?.[0];
+    const delta = choice?.delta?.content;
+    if (delta) { acc += delta; opts.onDelta(delta); }
+    if (choice?.finish_reason) finishReason = choice.finish_reason;
+  }
+  if (finishReason === "length") {
+    console.warn("[noir] Qwen hit max_tokens; response may be truncated. Got " + acc.length + " chars.");
+  }
+  if (!acc.trim()) {
+    throw new Error(`Qwen returned no text (finish: ${finishReason || "unknown"}).`);
+  }
+  return acc.trim();
 }
 
-async function _callQwenRaw(systemText, userText, maxTokens) {
+async function _callQwenRaw(systemText, userText, maxTokens, opts = {}) {
   const messages = [
     { role: "system", content: systemText },
     { role: "user", content: userText },
   ];
-  return _callQwenChat(messages, maxTokens, 0.85);
+  return _callQwenChat(messages, maxTokens, 0.85, opts);
 }
 
 // Raw single-shot LLM call (no per-suspect roleplay constraints) used for
 // the narrative layer (case opener, reveal monologue).
-async function callLLMRaw(system, user, maxTokens = 1000) {
+async function callLLMRaw(system, user, maxTokens = 1000, opts = {}) {
   if (!activeKey()) throw new Error("no API key");
-  if (STATE.provider === "google") return _callGeminiRaw(system, user, maxTokens);
-  if (STATE.provider === "qwen")   return _callQwenRaw(system, user, maxTokens);
-  return _callClaudeRaw(system, user, maxTokens);
+  if (STATE.provider === "google") return _callGeminiRaw(system, user, maxTokens, opts);
+  if (STATE.provider === "qwen")   return _callQwenRaw(system, user, maxTokens, opts);
+  return _callClaudeRaw(system, user, maxTokens, opts);
 }
 
-async function _callClaudeRaw(systemText, userText, maxTokens) {
+async function _callClaudeRaw(systemText, userText, maxTokens, opts = {}) {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -1320,6 +1674,7 @@ async function _callClaudeRaw(systemText, userText, maxTokens) {
       system: systemText,
       messages: [{ role: "user", content: userText }],
     }),
+    signal: opts.signal,
   });
   if (!res.ok) {
     const text = await res.text();
@@ -1331,7 +1686,7 @@ async function _callClaudeRaw(systemText, userText, maxTokens) {
   return t.trim();
 }
 
-async function _callGeminiRaw(systemText, userText, maxTokens) {
+async function _callGeminiRaw(systemText, userText, maxTokens, opts = {}) {
   const url = "https://generativelanguage.googleapis.com/v1beta/models/"
             + encodeURIComponent(STATE.apiModels.google) + ":generateContent?key="
             + encodeURIComponent(STATE.apiKeys.google);
@@ -1350,6 +1705,7 @@ async function _callGeminiRaw(systemText, userText, maxTokens) {
         thinkingConfig: { thinkingBudget: 0 },
       },
     }),
+    signal: opts.signal,
   });
   if (!res.ok) {
     const text = await res.text();
@@ -1422,7 +1778,7 @@ function scrubLeak(reply, suspect, caseObj) {
   return pick(v.deflect);
 }
 
-async function callClaude(suspect, userQuestion) {
+async function callClaude(suspect, userQuestion, opts = {}) {
   const system = buildSystemPromptForSuspect(STATE.case, suspect);
   const history = (STATE.conversations[suspect.name] || []).filter(
     t => t.role === "detective" || t.role === "suspect"
@@ -1433,6 +1789,14 @@ async function callClaude(suspect, userQuestion) {
     else if (turn.role === "suspect") messages.push({ role: "assistant", content: turn.content });
   }
 
+  const body = {
+    model: STATE.apiModels.anthropic,
+    max_tokens: 800,
+    system,
+    messages,
+  };
+  if (opts.onDelta) body.stream = true;
+
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -1441,30 +1805,35 @@ async function callClaude(suspect, userQuestion) {
       "anthropic-version": "2023-06-01",
       "anthropic-dangerous-direct-browser-access": "true",
     },
-    body: JSON.stringify({
-      model: STATE.apiModels.anthropic,
-      max_tokens: 800,
-      system,
-      messages,
-    }),
+    body: JSON.stringify(body),
+    signal: opts.signal,
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    let detail = text;
-    try {
-      const j = JSON.parse(text);
-      detail = j.error?.message || text;
-    } catch (_) {}
-    throw new Error(`Anthropic ${res.status}: ${detail.slice(0, 200)}`);
+  if (!res.ok) throw await _failedRequestError("Anthropic", res);
+
+  if (!opts.onDelta) {
+    const data = await res.json();
+    const blocks = data.content || [];
+    const text = blocks.filter(b => b.type === "text").map(b => b.text).join("");
+    return text.trim() || "[silence]";
   }
-  const data = await res.json();
-  const blocks = data.content || [];
-  const text = blocks.filter(b => b.type === "text").map(b => b.text).join("");
-  return text.trim() || "[silence]";
+
+  // Streaming: Anthropic uses one event per SSE message (content_block_delta
+  // is the one that carries text); ignore the rest. error events surface as
+  // {type: "error", error: {...}}.
+  let acc = "";
+  for await (const evt of sseEvents(res)) {
+    if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
+      const t = evt.delta.text;
+      if (t) { acc += t; opts.onDelta(t); }
+    } else if (evt.type === "error") {
+      throw new Error(`Anthropic stream error: ${evt.error?.message || "unknown"}`);
+    }
+  }
+  return acc.trim() || "[silence]";
 }
 
-async function callGemini(suspect, userQuestion) {
+async function callGemini(suspect, userQuestion, opts = {}) {
   const system = buildSystemPromptForSuspect(STATE.case, suspect);
   const history = (STATE.conversations[suspect.name] || []).filter(
     t => t.role === "detective" || t.role === "suspect"
@@ -1479,9 +1848,11 @@ async function callGemini(suspect, userQuestion) {
   }
 
   const model = STATE.apiModels.google;
+  const action = opts.onDelta ? "streamGenerateContent" : "generateContent";
+  const sseQ = opts.onDelta ? "&alt=sse" : "";
   const url = "https://generativelanguage.googleapis.com/v1beta/models/"
-            + encodeURIComponent(model) + ":generateContent?key="
-            + encodeURIComponent(STATE.apiKeys.google);
+            + encodeURIComponent(model) + ":" + action + "?key="
+            + encodeURIComponent(STATE.apiKeys.google) + sseQ;
 
   const res = await fetch(url, {
     method: "POST",
@@ -1495,26 +1866,37 @@ async function callGemini(suspect, userQuestion) {
         thinkingConfig: { thinkingBudget: 0 },
       },
     }),
+    signal: opts.signal,
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    let detail = text;
-    try {
-      const j = JSON.parse(text);
-      detail = j.error?.message || text;
-    } catch (_) {}
-    throw new Error(`Gemini ${res.status}: ${detail.slice(0, 200)}`);
+  if (!res.ok) throw await _failedRequestError("Gemini", res);
+
+  if (!opts.onDelta) {
+    const data = await res.json();
+    const reason = data.candidates?.[0]?.finishReason;
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    const text = parts.map(p => p.text || "").join("");
+    if (!text.trim()) {
+      if (reason === "SAFETY") throw new Error("Gemini blocked the response (safety filter).");
+      return "[silence]";
+    }
+    return text.trim();
   }
-  const data = await res.json();
-  const reason = data.candidates?.[0]?.finishReason;
-  const parts = data.candidates?.[0]?.content?.parts || [];
-  const text = parts.map(p => p.text || "").join("");
-  if (!text.trim()) {
-    if (reason === "SAFETY") throw new Error("Gemini blocked the response (safety filter).");
-    return "[silence]";
+
+  // Streaming: each SSE chunk carries a candidate with a partial parts array;
+  // accumulate text and watch for SAFETY finishReason on any chunk.
+  let acc = "";
+  let lastReason = null;
+  for await (const evt of sseEvents(res)) {
+    const cand = evt.candidates?.[0];
+    if (!cand) continue;
+    const parts = cand.content?.parts || [];
+    const t = parts.map(p => p.text || "").join("");
+    if (t) { acc += t; opts.onDelta(t); }
+    if (cand.finishReason) lastReason = cand.finishReason;
   }
-  return text.trim();
+  if (lastReason === "SAFETY") throw new Error("Gemini blocked the response (safety filter).");
+  return acc.trim() || "[silence]";
 }
 
 /* ============================== Narrative layer (opener + reveal) ============================== */
@@ -1523,7 +1905,7 @@ function narrativeEnabled() {
   return !!activeKey() && STATE.narrativeOn;
 }
 
-async function generateOpener(caseObj) {
+async function generateOpener(caseObj, opts = {}) {
   if (caseObj.narrativeOpener) return caseObj.narrativeOpener;
   const lang = caseObj.lang;
   const system = (lang === "zh")
@@ -1532,7 +1914,7 @@ async function generateOpener(caseObj) {
   const user = (lang === "zh")
     ? `受害人: ${caseObj.victim.name}, ${caseObj.victim.title}\n现场: ${caseObj.scene}\n现场凶器: ${caseObj.weaponAtScene}\n死亡时间: ${caseObj.timeOfDeath}`
     : `Victim: ${caseObj.victim.name}, ${caseObj.victim.title}\nScene: ${caseObj.scene}\nWeapon at scene: ${caseObj.weaponAtScene}\nTime of death: ${caseObj.timeOfDeath}`;
-  const reply = await callLLMRaw(system, user, 800);
+  const reply = await callLLMRaw(system, user, 800, opts);
   caseObj.narrativeOpener = reply;
   return reply;
 }
@@ -1606,14 +1988,14 @@ function _buildRevealUserPayload(caseObj) {
   return lines.join("\n");
 }
 
-async function generateRevealMonologue(caseObj) {
+async function generateRevealMonologue(caseObj, opts = {}) {
   if (caseObj.narrativeReveal) return caseObj.narrativeReveal;
   const lang = caseObj.lang;
   const system = (lang === "zh")
     ? "你扮演一桩 1930 年代民国上海 noir 凶案中的侦探, 案子刚破, 现在念结案独白。200-280 字, 用上海腔/民国调调。串起这些信息: 凶手 + 动机, 目击者那晚看到什么, 凶器为什么在现场, 每个无辜嫌疑人的红鲱鱼私事各是什么 (这些私事都跟凶案无关, 只是让他们看上去可疑)。用第一人称 (「我知道是 X 的时候……」)。不出戏, 不提脚本/游戏。直接输出独白, 不要引号或前后缀。"
     : "You are the detective in a 1940s noir film delivering a closing monologue, having just solved the case. Write 200-280 words in noir voice. Tie together: who the killer is + their motive, what the witness saw, why the weapon was at the scene, and (briefly) what each non-killer's red herring secret was actually about — make clear those secrets were unrelated to the murder, only making them LOOK suspicious. Speak in first person ('I knew it was X when...'). Do not break character. Do not mention the script or game. Output ONLY the monologue, no quotation marks, no preface.";
   const user = _buildRevealUserPayload(caseObj);
-  const reply = await callLLMRaw(system, user, 2000);
+  const reply = await callLLMRaw(system, user, 2000, opts);
   caseObj.narrativeReveal = reply;
   return reply;
 }
@@ -1632,6 +2014,7 @@ function renderAccusationGrid() {
 function showVerdict(v) {
   sfxStamp();
   recordVerdict(v);
+  clearSession();
   $("#verdict-accused").textContent = v.accused;
   $("#verdict-killer").textContent  = v.actualKiller;
   // Reset the reveal panel for a fresh game-over screen
@@ -1684,7 +2067,8 @@ function toggleReveal() {
   renderRevealAll(panel);
   panel.hidden = false;
   tog.textContent = t("btn.hideReveal");
-  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  panel.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
 }
 
 function renderRevealAll(panel) {
@@ -1700,11 +2084,17 @@ function renderRevealAll(panel) {
       monologue.innerHTML = `<p>${escapeHtml(c.narrativeReveal).replace(/\n+/g, "</p><p>")}</p>`;
     } else {
       monologue.innerHTML = `<p class="narrative-loading">${t("narrative.revealLoading")}</p>`;
-      generateRevealMonologue(c).then(text => {
+      abortNarrative();
+      const ctrl = new AbortController();
+      STATE.narrativeAbort = ctrl;
+      generateRevealMonologue(c, { signal: ctrl.signal }).then(text => {
+        if (STATE.narrativeAbort === ctrl) STATE.narrativeAbort = null;
         if (STATE.case === c) {
           monologue.innerHTML = `<p>${escapeHtml(text).replace(/\n+/g, "</p><p>")}</p>`;
         }
       }).catch(err => {
+        if (STATE.narrativeAbort === ctrl) STATE.narrativeAbort = null;
+        if (isAbortError(err)) return;
         console.warn("[noir] reveal LLM failed:", err.message);
         monologue.remove();
       });
@@ -1805,6 +2195,73 @@ function closeCaseModal() {
   $("#case-modal").classList.remove("active");
 }
 
+/* ============================== timeline / compare-statements modal ============================== */
+
+function openTimelineModal() {
+  if (!STATE.case) return;
+  renderTimeline();
+  $("#timeline-modal").classList.add("active");
+}
+
+function closeTimelineModal() {
+  $("#timeline-modal").classList.remove("active");
+}
+
+function renderTimeline() {
+  const c = STATE.case;
+  if (!c) return;
+  $("#timeline-tod-banner").textContent = `${t("briefing.tod")}: ${c.timeOfDeath}`;
+
+  // Alibis: shown only after the suspect has been questioned at least once.
+  // This makes the timeline a real reward for working through the lineup,
+  // not a free contradiction-finder.
+  const alibisEl = $("#timeline-alibis");
+  alibisEl.innerHTML = "";
+  const alibiFrag = document.createDocumentFragment();
+  c.suspects.forEach(s => {
+    const questioned = (c.questionCounts[s.name] || 0) > 0;
+    const row = el("div", { class: "tl-alibi-row" + (questioned ? "" : " unquestioned") });
+    const head = el("div", { class: "tl-alibi-head" });
+    head.appendChild(el("span", { class: "tl-alibi-name" }, s.name));
+    head.appendChild(el("span", { class: "tl-alibi-occ" }, s.occupation));
+    row.appendChild(head);
+    const body = el("div", { class: "tl-alibi-body" });
+    if (questioned) {
+      body.textContent = `"${s.claimedAlibi}"`;
+    } else {
+      body.textContent = t("timeline.notYetQuestioned");
+    }
+    row.appendChild(body);
+    alibiFrag.appendChild(row);
+  });
+  alibisEl.appendChild(alibiFrag);
+
+  // Witness statements: drawn from STATE.evidence (already collected via the
+  // CONFRONT pipeline). Each statement that names a suspect gets a chip the
+  // player can visually align with that suspect's alibi above.
+  const witEl = $("#timeline-witnesses");
+  witEl.innerHTML = "";
+  if (STATE.evidence.length === 0) {
+    witEl.appendChild(el("p", { class: "timeline-empty" }, t("timeline.noWitness")));
+    return;
+  }
+  const witFrag = document.createDocumentFragment();
+  STATE.evidence.forEach(ev => {
+    const card = el("div", { class: "tl-witness-card" });
+    const head = el("div", { class: "tl-witness-head" });
+    head.appendChild(el("span", { class: "tl-witness-source" },
+      `${t("confront.fromLabel", ev.source)}`));
+    if (ev.namedSuspect) {
+      head.appendChild(el("span", { class: "tl-name-pill" },
+        t("timeline.namesPill", ev.namedSuspect)));
+    }
+    card.appendChild(head);
+    card.appendChild(el("div", { class: "tl-witness-text" }, `"${ev.text}"`));
+    witFrag.appendChild(card);
+  });
+  witEl.appendChild(witFrag);
+}
+
 function renderStats() {
   const out = $("#stats-display");
   if (!out) return;
@@ -1861,7 +2318,7 @@ function renderStats() {
 
 function resetStats() {
   if (!confirm(t("stats.resetConfirm"))) return;
-  localStorage.removeItem(LS.stats);
+  lsRemove(LS.stats);
   renderStats();
 }
 
@@ -1897,10 +2354,10 @@ function closeSettings() {
 function setProvider(provider) {
   if (!PROVIDERS[provider]) return;
   STATE.provider = provider;
-  localStorage.setItem(LS.provider, provider);
+  lsSet(LS.provider, provider);
   setProviderUI(provider);
   updateApiStatus();
-  setMode(STATE.mode);  // refresh AI hint
+  refreshAskArea();
 }
 
 function setProviderUI(provider) {
@@ -1926,10 +2383,10 @@ function saveApiKey() {
   STATE.apiModels[provider] = model;
   const lsKey = { anthropic: LS.anthropicKey, google: LS.googleKey, qwen: LS.qwenKey }[provider];
   const lsModel = { anthropic: LS.anthropicModel, google: LS.googleModel, qwen: LS.qwenModel }[provider];
-  localStorage.setItem(lsKey, key);
-  localStorage.setItem(lsModel, model);
+  lsSet(lsKey, key);
+  lsSet(lsModel, model);
   updateApiStatus(true);
-  setMode(STATE.mode);  // refresh AI hint
+  refreshAskArea();
   refreshKeyBanner();
 }
 
@@ -1937,11 +2394,11 @@ function clearApiKey() {
   const provider = STATE.provider;
   STATE.apiKeys[provider] = null;
   const lsKey = { anthropic: LS.anthropicKey, google: LS.googleKey, qwen: LS.qwenKey }[provider];
-  localStorage.removeItem(lsKey);
+  lsRemove(lsKey);
   const keyEl = $(`#${provider}-key`);
   if (keyEl) keyEl.value = "";
   updateApiStatus();
-  setMode(STATE.mode);
+  refreshAskArea();
   refreshKeyBanner();
 }
 
@@ -1968,7 +2425,7 @@ function showTutorial() {
 
 function dismissTutorial() {
   $("#tutorial-hint").hidden = true;
-  localStorage.setItem(LS.tutorialSeen, "1");
+  lsSet(LS.tutorialSeen, "1");
 }
 
 function dailySeedString() {
@@ -1997,8 +2454,12 @@ function requireKey() {
 
 async function newCase(seed = null) {
   if (!requireKey()) return;
+  abortInterrogation();
+  abortNarrative();
+  clearSession();
+  hideResumeBanner();
   // First-time players: show a one-line tip about the deduction loop.
-  if (!localStorage.getItem(LS.tutorialSeen)) {
+  if (!lsGet(LS.tutorialSeen)) {
     showTutorial();
   }
   STATE.case = await generateCase(STATE.lang, seed, STATE.difficulty);
@@ -2013,6 +2474,7 @@ async function newCase(seed = null) {
   if (window.location.search) {
     history.replaceState(null, "", window.location.pathname);
   }
+  saveSession();
   renderBriefing();
   show("screen-briefing");
 }
@@ -2046,6 +2508,7 @@ function flashShareStatus(msg) {
 
 function gotoLineup() {
   if (!STATE.case) return;
+  abortInterrogation();
   renderLineupGrid("lineup-grid", suspect => {
     sfxCreak();
     renderInterrogation(suspect);
@@ -2060,57 +2523,56 @@ function gotoAccusation()  { renderAccusationGrid(); show("screen-accusation"); 
 
 function loadSettings() {
   // Provider config + per-provider keys/models
-  STATE.provider = localStorage.getItem(LS.provider) || "anthropic";
+  STATE.provider = lsGet(LS.provider) || "anthropic";
   if (!PROVIDERS[STATE.provider]) STATE.provider = "anthropic";
 
-  STATE.apiKeys.anthropic = localStorage.getItem(LS.anthropicKey);
-  STATE.apiKeys.google    = localStorage.getItem(LS.googleKey);
-  STATE.apiKeys.qwen      = localStorage.getItem(LS.qwenKey);
-  STATE.apiModels.anthropic = localStorage.getItem(LS.anthropicModel) || "claude-haiku-4-5-20251001";
-  STATE.apiModels.google    = localStorage.getItem(LS.googleModel)    || "gemini-2.5-flash";
-  STATE.apiModels.qwen      = localStorage.getItem(LS.qwenModel)      || "qwen-plus";
+  STATE.apiKeys.anthropic = lsGet(LS.anthropicKey);
+  STATE.apiKeys.google    = lsGet(LS.googleKey);
+  STATE.apiKeys.qwen      = lsGet(LS.qwenKey);
+  STATE.apiModels.anthropic = lsGet(LS.anthropicModel) || "claude-haiku-4-5-20251001";
+  STATE.apiModels.google    = lsGet(LS.googleModel)    || "gemini-2.5-flash";
+  STATE.apiModels.qwen      = lsGet(LS.qwenModel)      || "qwen-plus";
 
   // One-time migration: legacy single-key noir.apiKey was Anthropic.
-  const legacyKey = localStorage.getItem(LS.legacyApiKey);
-  const legacyModel = localStorage.getItem(LS.legacyApiModel);
+  const legacyKey = lsGet(LS.legacyApiKey);
+  const legacyModel = lsGet(LS.legacyApiModel);
   if (legacyKey && !STATE.apiKeys.anthropic) {
     STATE.apiKeys.anthropic = legacyKey;
-    localStorage.setItem(LS.anthropicKey, legacyKey);
+    lsSet(LS.anthropicKey, legacyKey);
   }
-  if (legacyModel && !localStorage.getItem(LS.anthropicModel)) {
+  if (legacyModel && !lsGet(LS.anthropicModel)) {
     STATE.apiModels.anthropic = legacyModel;
-    localStorage.setItem(LS.anthropicModel, legacyModel);
+    lsSet(LS.anthropicModel, legacyModel);
   }
   if (legacyKey || legacyModel) {
-    localStorage.removeItem(LS.legacyApiKey);
-    localStorage.removeItem(LS.legacyApiModel);
+    lsRemove(LS.legacyApiKey);
+    lsRemove(LS.legacyApiModel);
   }
 
-  AUDIO.muted    = localStorage.getItem(LS.muted) === "1";
-  AUDIO.ambientOn = localStorage.getItem(LS.ambient) === "1";
+  AUDIO.muted    = lsGet(LS.muted) === "1";
+  AUDIO.ambientOn = lsGet(LS.ambient) === "1";
   // Narrative layer defaults ON when enabled (only effective if AI key present)
-  STATE.narrativeOn = localStorage.getItem(LS.narrative) !== "0";
+  STATE.narrativeOn = lsGet(LS.narrative) !== "0";
 
   // URL params take precedence on first load (so shared links work).
   const params = new URLSearchParams(window.location.search);
   const langFromUrl = params.get("lang");
   STATE.lang = (langFromUrl === "en" || langFromUrl === "zh")
     ? langFromUrl
-    : (localStorage.getItem(LS.lang) || detectLang());
+    : (lsGet(LS.lang) || detectLang());
 
   const diffFromUrl = params.get("difficulty");
   const validDiffs = ["easy", "normal", "hard"];
+  const storedDiff = lsGet(LS.difficulty);
   STATE.difficulty = validDiffs.includes(diffFromUrl)
     ? diffFromUrl
-    : (validDiffs.includes(localStorage.getItem(LS.difficulty))
-        ? localStorage.getItem(LS.difficulty)
-        : "normal");
+    : (validDiffs.includes(storedDiff) ? storedDiff : "normal");
 }
 
 function setDifficulty(d) {
   if (!["easy", "normal", "hard"].includes(d)) return;
   STATE.difficulty = d;
-  localStorage.setItem(LS.difficulty, d);
+  lsSet(LS.difficulty, d);
   $$(".difficulty-toggle button").forEach(b => {
     b.classList.toggle("active", b.dataset.difficulty === d);
   });
@@ -2158,6 +2620,10 @@ function bind() {
         case "set-provider":  setProvider(btn.dataset.provider); break;
         case "open-case-modal":  openCaseModal();  break;
         case "close-case-modal": closeCaseModal(); break;
+        case "open-timeline-modal":  openTimelineModal();  break;
+        case "close-timeline-modal": closeTimelineModal(); break;
+        case "resume-session":   resumeSession();   break;
+        case "discard-session":  discardSession();  break;
         case "toggle-reveal":    toggleReveal();   break;
         case "dismiss-tutorial": dismissTutorial(); break;
         case "reset-stats":      resetStats();      break;
@@ -2172,9 +2638,6 @@ function bind() {
 
     const diffBtn = e.target.closest(".difficulty-toggle button");
     if (diffBtn) { setDifficulty(diffBtn.dataset.difficulty); return; }
-
-    const modeBtn = e.target.closest(".mode-btn");
-    if (modeBtn) { setMode(modeBtn.dataset.mode); return; }
   });
 
   $("#settings-modal").addEventListener("click", (e) => {
@@ -2183,11 +2646,15 @@ function bind() {
   $("#case-modal").addEventListener("click", (e) => {
     if (e.target.id === "case-modal") closeCaseModal();
   });
+  $("#timeline-modal").addEventListener("click", (e) => {
+    if (e.target.id === "timeline-modal") closeTimelineModal();
+  });
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       closeSettings();
       closeCaseModal();
+      closeTimelineModal();
       closeShortcutsHelp();
       return;
     }
@@ -2208,6 +2675,7 @@ function bind() {
     if (interrogActive) {
       if (e.key === "n" || e.key === "N") { e.preventDefault(); toggleNotes(); return; }
       if (e.key === "c" || e.key === "C") { e.preventDefault(); openCaseModal(); return; }
+      if (e.key === "t" || e.key === "T") { e.preventDefault(); openTimelineModal(); return; }
       if (e.key === "l" || e.key === "L") { e.preventDefault(); gotoLineup(); return; }
     }
 
@@ -2281,6 +2749,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     sfxCrackleBurst();
   }, { once: true });
   show("screen-title");
+  maybeShowResumeBanner();
   // If the URL has ?seed=, auto-load that case and skip the title screen.
   await maybeAutoStartFromUrl();
 });

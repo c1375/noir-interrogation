@@ -6,7 +6,7 @@
   <title>Noir Interrogation</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Playfair+Display:wght@700;900&family=Cormorant+Garamond:wght@400;700&family=Noto+Serif+SC:wght@700;900&family=Noto+Sans+SC:wght@400;500&family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Playfair+Display:wght@700;900&family=Noto+Serif+SC:wght@700;900&family=Noto+Sans+SC&family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -43,6 +43,16 @@
           <div class="difficulty-desc" id="difficulty-desc" data-i18n="diff.descNormal">5 suspects • 1 witness clue • 1 motive leaker</div>
         </div>
 
+        <div id="resume-banner" class="resume-banner" hidden>
+          <p class="resume-text">
+            <span data-i18n="resume.label">In-progress case</span>
+            <span class="resume-case-id" id="resume-case-id">#--------</span>
+          </p>
+          <div class="resume-actions">
+            <button class="btn-primary" data-action="resume-session" data-i18n="resume.resume">RESUME</button>
+            <button class="btn-discard" data-action="discard-session" data-i18n="resume.discard">discard</button>
+          </div>
+        </div>
         <div class="title-buttons">
           <button class="btn-primary" data-action="new-case" data-i18n="btn.newCase">NEW CASE</button>
           <button class="btn-secondary" data-action="daily-case" data-i18n="btn.dailyCase">DAILY CASE</button>
@@ -117,6 +127,7 @@
           </div>
           <div class="interrog-header-actions">
             <button class="btn-icon" data-action="open-case-modal" data-i18n="btn.caseFile">CASE FILE</button>
+            <button class="btn-icon" data-action="open-timeline-modal" data-i18n="btn.timeline">TIMELINE</button>
             <button class="btn-icon" data-action="toggle-notes" data-i18n="btn.notes">NOTES</button>
             <button class="btn-icon" data-action="goto-lineup" data-i18n="btn.backToLineup">← LINEUP</button>
           </div>
@@ -224,6 +235,7 @@
         <h4 data-i18n="shortcuts.interrog">Interrogation</h4>
         <div class="shortcuts-row"><kbd>N</kbd> <span data-i18n="shortcuts.notes">Toggle notes</span></div>
         <div class="shortcuts-row"><kbd>C</kbd> <span data-i18n="shortcuts.caseFile">Case file modal</span></div>
+        <div class="shortcuts-row"><kbd>T</kbd> <span data-i18n="shortcuts.timeline">Timeline modal</span></div>
         <div class="shortcuts-row"><kbd>L</kbd> <span data-i18n="shortcuts.backLineup">Back to lineup</span></div>
       </div>
       <div class="shortcuts-section">
@@ -267,6 +279,28 @@
       <div class="commitment-box">
         <div class="commitment-label" data-i18n="briefing.commitLabel">ANSWER COMMITMENT — SHA-256</div>
         <div class="commitment-hash" id="case-modal-hash">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== TIMELINE / COMPARE-STATEMENTS MODAL ========== -->
+  <div id="timeline-modal" class="modal">
+    <div class="modal-content timeline-modal-content">
+      <button class="modal-close" data-action="close-timeline-modal" aria-label="Close">×</button>
+      <div class="case-modal-header">
+        <span class="case-stamp" data-i18n="timeline.stamp">TIMELINE</span>
+        <span class="case-id" id="timeline-tod-banner">—</span>
+      </div>
+      <p class="timeline-intro" data-i18n="timeline.intro">Compare each suspect's claimed alibi against any witness statement that names them. A contradiction is your case.</p>
+
+      <h3 data-i18n="timeline.alibisHeader">Claimed alibis</h3>
+      <div id="timeline-alibis" class="timeline-alibis">
+        <!-- populated by renderTimeline() -->
+      </div>
+
+      <h3 data-i18n="timeline.witnessHeader">Witness statements collected</h3>
+      <div id="timeline-witnesses" class="timeline-witnesses">
+        <!-- populated by renderTimeline() -->
       </div>
     </div>
   </div>

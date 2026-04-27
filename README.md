@@ -14,7 +14,7 @@ A noir-flavored murder-mystery interrogation game where **the script is the case
 
 Three surfaces:
 1. **The skill** (`.claude/skills/noir-interrogation/`) — Claude Code skill, primary assignment deliverable.
-2. **Web port** (`web/`) — static site, mirrors the engine in JavaScript with two play modes (offline templated / BYOK LLM via Anthropic *or* free-tier Google Gemini).
+2. **Web port** (`web/`) — static site, mirrors the engine in JavaScript and drives a BYOK LLM (Anthropic Claude, free-tier Google Gemini, *or* free-tier Alibaba Qwen). Streams suspect replies token-by-token, persists the in-progress case to `localStorage` so a refresh doesn't kill your run, and ships a TIMELINE view that lays each suspect's claimed alibi next to every collected witness statement.
 3. **One-click launchers** (`play.bat` / `play.sh` / `play.py`) — double-click to run locally.
 
 ---
@@ -144,19 +144,24 @@ Repo Settings → Pages → source `main` branch, `/web` folder. Site goes live 
 
 | | |
 |---|---|
-| **OFFLINE mode** | 8 preset question buttons, templated responses per occupation. No setup, no API calls. The killer becomes notably more evasive about time-of-death; the witness reveals their statement after a couple of warmup questions; the motive leaker drops gossip if pressed about the victim. |
-| **AI mode (BYOK)** | Free-text any question. The browser calls the chosen provider directly with the suspect's card as a `system` prompt. |
+| **AI mode (BYOK)** | Free-text any question OR click a preset button. The browser calls the chosen provider directly with the suspect's card as a `system` prompt. An API key is required to start a case (the title-screen banner walks you to settings if it's missing). |
 | ↳ **Anthropic Claude** | Paid. Models: Haiku 4.5 (cheap/fast), Sonnet 4.6 (richer roleplay). |
 | ↳ **Google Gemini** | **Free tier available.** Models: 2.5 Flash, 2.5 Pro. Get a key at aistudio.google.com/apikey. |
+| ↳ **Alibaba Qwen 通义千问** | **Free tier available.** Models: qwen-plus / qwen-turbo / qwen-max via DashScope OpenAI-compatible endpoint. Best ZH performance. |
+| **Streaming responses** | Suspect replies arrive token-by-token via SSE — no more staring at "thinking…". A blinking caret shows where text is still arriving. Switch suspects mid-stream and the in-flight call is `AbortController`-cancelled so it can't land in the wrong thread. |
+| **Refresh-resume** | The in-progress case (suspects, conversations, notes, evidence, current suspect) is snapshotted to `localStorage` after each turn. A refresh / tab close lands you on the title screen with a "RESUME case #XXXX" banner; click and pick up exactly where you left off. Cleared automatically on verdict or NEW CASE. |
+| **TIMELINE / compare-statements view** | Header button (or `T`) opens a modal that lays each suspect's claimed alibi side-by-side, with collected witness statements below — each chipped with **"names ELIZA"** so the contradiction with that suspect's alibi is visually adjacent. Alibis stay greyed-out until you've actually questioned the suspect, so the timeline rewards (rather than replaces) the legwork. |
 | **Bilingual** | EN \| 中 floating toggle, top-right. Persists to localStorage; auto-detects from browser language. |
 | **Difficulty** | Easy/Normal/Hard selector on title screen. |
 | **Case File modal** | A button on the interrogation header opens an overlay showing victim/scene/weapon/TOD/suspects/hash without leaving the conversation. |
-| **Notes panel** | Slide-in from the right; auto-collects every Q&A grouped by suspect and category. |
+| **Notes panel** | Slide-in from the right; auto-collects every Q&A grouped by suspect and category. Incremental DOM updates (only the active tab re-renders on a new note). |
 | **Confront mechanic** | After hearing 2+ Qs from a witness suspect, their statement gets added to your evidence; click CONFRONT and present any collected statement to any suspect. The killer cracks (in voice) when confronted with a statement that names them; the falsely-accused defends with their alibi; unrelated suspects shrug. |
 | **Suspect memory** | Repeating the same question makes the suspect notice ("I already told you, detective…") and escalate on third ask. |
 | **Hash commitment + verdict** | The game-start hash is re-computed at accusation and shown to the player as proof of no-cheating. |
 | **Share via URL seed** | Each case has a deterministic seed; "Share this case" button copies a `?seed=…&lang=…` URL. Anyone opening it gets the exact same case (great for competing with friends). |
-| **Atmosphere audio** | Synthesized via Web Audio API (no external assets): typewriter clicks on each text bubble, door creak on suspect select, stamp on verdict, vinyl crackle on first interaction. ♪ toggle in the header. |
+| **LLM narrative layer (opt-in)** | When enabled in settings, the briefing gains an atmospheric scene-setter and the verdict reveals a noir closing monologue tying motive / witness / red herrings together. Adds 2 small API calls per case; both `AbortController`-cancelled if you start a new case mid-generation. |
+| **Atmosphere audio** | Synthesized via Web Audio API (no external assets): typewriter clicks on each text bubble, door creak on suspect select, stamp on verdict, vinyl crackle on first interaction. ♪ toggle in the header. Honors `prefers-reduced-motion` for visual animations too. |
+| **Daily case + stats + achievements** | A deterministic daily seed (everyone playing the same calendar day gets the same case, NORMAL difficulty), plus stored win-rate / streak / fewest-questions stats and 6 achievements. |
 
 ---
 
@@ -197,9 +202,10 @@ The skill is exercised on three prompts in the demo video:
 
 ## Limitations
 
-- **Single-session.** Cases persist on disk but design assumes one playthrough.
-- **Honor-system on raw file reads.** Case JSON contains `_killer` in plaintext; SKILL.md tells the agent never to `cat` it. A paranoid design would encrypt the secret separately.
-- **AI mode occasionally drifts.** Despite hard system-prompt rules, LLMs sometimes invent details or react to bluffs in non-canonical ways. OFFLINE mode is fully deterministic.
+- **Single-session.** Cases persist on disk (skill) and in `localStorage` (web) but design assumes one playthrough at a time.
+- **Honor-system on raw state reads.** Case JSON contains `_killer` in plaintext; SKILL.md tells the agent never to `cat` it, and the web port writes the same field into `localStorage` for refresh-resume — visible in DevTools. A paranoid design would encrypt the secret separately.
+- **AI mode occasionally drifts.** Despite hard system-prompt rules, LLMs sometimes invent details or react to bluffs in non-canonical ways. The script enforces the puzzle and verifies the answer hash, but in-character details can wander.
+- **API key required to play the web port.** As of the recent rewrite the OFFLINE preset-only mode was removed; the title screen now blocks NEW CASE until a key is configured. Set up a free Gemini or Qwen key in 30 seconds via Settings.
 - **Web port is desktop-first.** Mobile layout works but isn't polished.
 
 ---
