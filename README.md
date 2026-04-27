@@ -4,7 +4,7 @@
 **Course:** Generative AI · Week 5 (Build a Reusable AI Skill)
 **Repository:** https://github.com/c1375/noir-interrogation
 **Video walkthrough:** *<paste video link here before submitting>*
-**Playable web demo:** *<paste GitHub Pages link here after deploying — see "Web demo" section>*
+**Playable web demo:** local only — double-click `play.bat` (Windows) or `play.sh` (macOS / Linux), or run `python play.py`. See the [Web demo](#web-demo) section below.
 
 ---
 
